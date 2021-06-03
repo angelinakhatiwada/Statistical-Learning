@@ -186,4 +186,4 @@ cleaned_data$age <- NULL; cleaned_data$income <- NULL; cleaned_data$occupation<-
 }
 
 
-mtcars.pca <- prcomp(newdata[,-(which(colnames(newdata)=="Y"))], center = TRUE,scale. = TRUE)
+# newdata.pca <- prcomp(newdata[,-(which(colnames(newdata)=="Y"))], center = TRUE,scale. = TRUE)
