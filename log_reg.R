@@ -12,101 +12,301 @@ library(caret)
 
 #-------------DATA PREPARATION-------------------
 
-data <- read.csv("https://raw.githubusercontent.com/rijinbaby/Statistical-Learning/main/in-vehicle-coupon-recommendation.csv", 
+coupon_data  <- read.csv("https://raw.githubusercontent.com/rijinbaby/Statistical-Learning/main/in-vehicle-coupon-recommendation.csv", 
                  header=T, na.strings=c("","NA"))
-head(data)
-dim(data)
-str(data) #data types
+head(coupon_data)
+dim(coupon_data)
+str(coupon_data) #data types
 
 #glimpse(data)
 
 #Data summarization
 
 summary(data)
+coupon_data %>% map(table)
 
-skim(data) #also checking for NA values
+skim(data) #checking for NA values, unique value in the column
 
-#sapply(data, function(x) sum(is.na(x))) #checking for NA values
+#dropping column car, toCoupon_GEQ5min
 
-for (i in colnames(data))
-  {print(table(data[[i]]))
-}
-
-ggplot(data, aes(x = `occupation`)) +
-  geom_bar() +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1))
-
-#dropping column car
-
-drops <- c("car")
-data_ncars <- data[ , !(colnames(data) %in% drops)]
-head(data_ncars)
+drops <- c("car", 'toCoupon_GEQ5min')
+coupon_data <- coupon_data[ , !(colnames(coupon_data) %in% drops)]
+head(coupon_data)
 
 #drop_na in entire table
 
-data_ncars <- data_ncars[complete.cases(data_ncars), ]
-dim(data_ncars)
+#coupon_data <- data_ncars[complete.cases(data_ncars), ]
+#dim(coupon_data)
 
-#creating numeric value for expiration column and scaling
+library(purrr)
+# View(coupon_data %>% map(table))
 
-#range1 <- function(x){(x-min(x))/(max(x)-min(x))}
+coupon_data[] <- lapply(coupon_data, as.character)
+coupon_data$Y <- as.numeric(coupon_data$Y)
 
-data_ncars$expiration[data_ncars$expiration == "1d"] <- 24
-data_ncars$expiration[data_ncars$expiration =="2h"] <- 2
+# age column - Creating a new column to give numerical weightage
+table(coupon_data$age)
+coupon_data$age_weightage <- NA
+coupon_data$age_weightage[which(coupon_data$age=="below21")] <- 1
+coupon_data$age_weightage[which(coupon_data$age=="21")] <- 2
+coupon_data$age_weightage[which(coupon_data$age=="26")] <- 3
+coupon_data$age_weightage[which(coupon_data$age=="31")] <- 4
+coupon_data$age_weightage[which(coupon_data$age=="36")] <- 5
+coupon_data$age_weightage[which(coupon_data$age=="41")] <- 6
+coupon_data$age_weightage[which(coupon_data$age=="46")] <- 7
+coupon_data$age_weightage[which(coupon_data$age=="50plus")] <- 8
 
-data_ncars$expiration <- scale(as.numeric(data_ncars$expiration), center = FALSE)
 
-table(data_ncars$expiration)
+#coupon_data$age_weightage <- scale(as.numeric(coupon_data$age_weightage), center = FALSE)
+
+table(coupon_data$age_weightage)
 
 
-#creating dummy variables and dropping unnecessary variables for final table
+# temp & weather
+# View(table(coupon_data$weather,coupon_data$temperature))
 
-dum_cols = c("destination", "passanger", "age", "time",
-             "weather","temperature", "coupon", "gender", "maritalStatus","education","occupation",
-             "Bar", "income", "CoffeeHouse", "CarryAway", "RestaurantLessThan20", "Restaurant20To50")
+# Income - Creating a new column to give numerical weightage
+table(coupon_data$income)
+coupon_data$income_weightage <- NA
+coupon_data$income_weightage[which(coupon_data$income=="Less than $12500")] <- 1
+coupon_data$income_weightage[which(coupon_data$income=="$12500 - $24999")] <- 2
+coupon_data$income_weightage[which(coupon_data$income=="$25000 - $37499")] <- 3
+coupon_data$income_weightage[which(coupon_data$income=="$37500 - $49999")] <- 4
+coupon_data$income_weightage[which(coupon_data$income=="$50000 - $62499")] <- 5
+coupon_data$income_weightage[which(coupon_data$income=="$62500 - $74999")] <- 6
+coupon_data$income_weightage[which(coupon_data$income=="$75000 - $87499")] <- 7
+coupon_data$income_weightage[which(coupon_data$income=="$87500 - $99999")] <- 8
+coupon_data$income_weightage[which(coupon_data$income=="$100000 or More")] <- 9
 
-results <- fastDummies::dummy_cols(data_ncars, remove_first_dummy = TRUE, select_columns = dum_cols)
 
+#coupon_data$income_weightage <- scale(as.numeric(coupon_data$income_weightage), center = FALSE)
+
+# Income - Creating a new column to re-classify reference - https://en.wikipedia.org/wiki/International_Standard_Classification_of_Occupations
+(table(coupon_data$occupation))
+coupon_data$occupation_class <- NA
+coupon_data$occupation_class[which(coupon_data$occupation %in% 
+                                     c("Architecture & Engineering","Arts Design Entertainment Sports & Media"
+                                       ,"Business & Financial","Computer & Mathematical","Education&Training&Library"
+                                       ,"Healthcare Practitioners & Technical","Legal","Management"))] <- "Professionals"
+coupon_data$occupation_class[which(coupon_data$occupation %in% 
+                                     c("Building & Grounds Cleaning & Maintenance","Food Preparation & Serving Related"
+                                       ,"Installation Maintenance & Repair","Transportation & Material Moving"))]  <- "Craft and related trades workers"
+coupon_data$occupation_class[which(coupon_data$occupation %in% 
+                                     c("Community & Social Services","Construction & Extraction","Healthcare Support"
+                                       ,"Life Physical Social Science"))] <- "Technicians and associate professionals"
+coupon_data$occupation_class[which(coupon_data$occupation %in% 
+                                     c("Personal Care & Service","Protective Service","Sales & Related"))] <- "Service and sales workers"
+coupon_data$occupation_class[which(coupon_data$occupation %in% 
+                                     c("Farming Fishing & Forestry","Office & Administrative Support"
+                                       ,"Production Occupations"))] <- "Others"  #own classification
+coupon_data$occupation_class[which(coupon_data$occupation=="Retired")] <- 'Retired' 
+coupon_data$occupation_class[which(coupon_data$occupation=="Student")] <- "Student"
+coupon_data$occupation_class[which(coupon_data$occupation=="Unemployed")] <- "Unemployed"
+
+# TIME VARIABLE
+table(coupon_data$expiration)
+coupon_data$expiration_weightage <- NA
+coupon_data$expiration_weightage[which(coupon_data$expiration=="2h")] <- 2
+coupon_data$expiration_weightage[which(coupon_data$expiration=="1d")] <- 24
+
+#coupon_data$expiration_weightage <- scale(as.numeric(coupon_data$expiration_weightage), center = FALSE)
+
+# passenger
+coupon_data$passanger[which(coupon_data$passanger=="Friend(s)")] <- "Friends"
+coupon_data$passanger[which(coupon_data$passanger=="Kid(s)")] <- "Kids"
+
+
+coupon_data %>% map(table)
+
+# missing imputation knn approach ------------------------------------------
+
+{
+  library(VIM)
+  colMeans(is.na(coupon_data))*100
+  which(colMeans(is.na(coupon_data))>0)
+  cleaned_data <- kNN(coupon_data
+                      , variable = c("Bar","CoffeeHouse","CarryAway","RestaurantLessThan20","Restaurant20To50")
+                      , k = 5)
+  cleaned_data <- cleaned_data[,1:ncol(coupon_data)]
+  # coupon_data_final %>% map(table)
+  colMeans(is.na(cleaned_data))*100
+  
+}
+
+dim(cleaned_data)
+
+
+# Plots -------------------------------------------------------------------
+library(grid)
+library(gridExtra)
+
+cleaned_data$Y <- as.character(cleaned_data$Y)
+
+#Destination
+p1 <- ggplot(cleaned_data, aes(x=destination, fill=Y)) +
+    geom_bar(stat="count")
+
+#For all columns
+for (i in colnames(cleaned_data))
+{p <- ggplot(cleaned_data, aes(x=cleaned_data[[i]], fill=cleaned_data$Y)) +
+  geom_bar(stat="count")
+print(p)
+}
+
+#for numeric variables
+
+#Age histogram
+p2 <- ggplot(data = cleaned_data, aes(age_weightage, color = Y))+
+  geom_freqpoly(binwidth = 5, size = 1)
+
+#Income histogram
+p3 <- ggplot(data = cleaned_data, aes(income_weightage, color = Y))+
+  geom_freqpoly(binwidth = 5, size = 1)
+
+#Expiration histogram
+p4 <- ggplot(data = cleaned_data, aes(expiration_weightage, color = Y))+
+  geom_freqpoly(binwidth = 5, size = 1)
+
+grid.arrange(p1, p2, p3, p4, ncol=2)
+
+cleaned_data$Y <- as.numeric(cleaned_data$Y)
+
+# One-hot encoding --------------------------------------------------------
+
+{
+  cleaned_data$age <- NULL; cleaned_data$income <- NULL; cleaned_data$occupation<- NULL; cleaned_data$expiration <- NULL
+  
+  # library(caret)
+  # dummy <- dummyVars(" ~ .", data=cleaned_data)
+  # coupon_data_encoded <- data.frame(predict(dummy, newdata = cleaned_data)) 
+  
+  encoded <- fastDummies::dummy_cols(cleaned_data, remove_first_dummy = TRUE)
+  
+  coupon_data_encoded <- encoded[ , ((!(colnames(encoded) %in% colnames(cleaned_data))) 
+                                     | (colnames(encoded) %in% c("Y","age_weightage","income_weightage","expiration_weightage")))]
+}
+
+head(coupon_data_encoded)
 
 #remove_first_dummy is TRUE, removes the first dummy variable created from each column. 
 #This is done to avoid multicollinearity in a multiple regression model caused by included all dummy variables. 
 
-drop_cols = c(dum_cols, c("toCoupon_GEQ25min", "direction_opp")) #drop additional correlated variables
 
-drop_cols
+drops= c("direction_opp_1") #drop additional correlated variables
 
-df <- results[ , !(colnames(results) %in% drop_cols)]
-str(df)
+coupon_data_encoded <- coupon_data_encoded[ , !(colnames(coupon_data_encoded) %in% drops)]
 
-sapply(df, function(x) sum(is.na(x)))
+#-----------------MODELING --------------------------------
 
-
-#-------------MODELING -------------------
+#-----------------LOGISTIC REGRESSION----------------------
 
 #train/test split
 
 set.seed(123)
-trainIndex <- createDataPartition(df$Y, p = .67,
+split_train_test  <- createDataPartition(coupon_data_encoded$Y, p = .67,
                                   list = FALSE,
                                   times = 1)
  
-Train <- df[ trainIndex,]
-Test  <- df[-trainIndex,]
+train <- coupon_data_encoded[ split_train_test,]
+test  <- coupon_data_encoded[-split_train_test,]
 
 #Logistic Regression
 
-mod_fit <- train(Y ~  has_children + .,  data=Train, method="glm", family="binomial")
-summary(mod_fit)
+#mod_fit <- glm(Y ~., data = train, family=binomial(link='logit'))
+#summary(mod_fit)
 
+# CV  with 10 folds
+train_control <- trainControl(method = "cv", number = 10)
+
+# train the model on training set
+log_reg <- train(Y ~.,
+               data = train,
+               trControl = train_control,
+               method = "glm",
+               family=binomial(link='logit'))
+
+log_reg
+summary(log_reg)
 
 # Predictions
 
-probabilities <- mod_fit %>% predict(Test)
+probabilities <- log_reg %>% predict(test)
 predicted.classes <- ifelse(probabilities > 0.5, "1", "0")
+#predicted.classes
 
-# Model accuracy
 
-predicted.classes
+# Model accuracy and Confusion matrix
 
-mean(predicted.classes == Test$Y)
+mean(predicted.classes == test$Y)
+log_reg_prob1 <- predict(log_reg, test)
+log_reg_pred1 <- ifelse(log_reg_prob1 > 0.55,"1","0")
+table(Predicted = log_reg_pred1, Actual = test$Y)
+
+confusionMatrix(
+  as.factor(log_reg_pred1),
+  as.factor(test$Y),
+  positive = "1" 
+)
+
+#High sensitivity : few FN
+#Low specificity: Many FP - a problem?
+#with threshold 0.5, changing the threshold
+#Sensitivity : 0.7669          
+#Specificity : 0.5788
+
+
+library(pROC)
+test_roc = roc(test$Y ~ log_reg_prob1, plot = TRUE, print.auc = TRUE)
+
+
+#Check multicollinarity
+
+
+
+#-----------------Linear Discriminant Analysis---------------------
+
+library(MASS)
+lda.fit=lda(Y~.,data = train)
+lda.fit
+
+plot(lda.fit)
+
+lda.pred=predict(lda.fit,test)$class
+table(lda.pred,test$Y)
+
+
+mean(lda.pred==test$Y)
+
+
+#---------------ASSOCIATION RULES --------------------
+
+assoc <- xtabs(~Y+`destination_No Urgent Place`, data=coupon_data_encoded)
+assoc
+
+
+plot(assoc, col=c("green","blue"))
+
+Test <- chisq.test(assoc, correct=FALSE)
+Test
+
+#Chi2 is 216, relation between the variables is significant ( p-value)
+#Reject H0 about independence between variables
+#Not a perfect association
+
+library("epitools")
+riskratio.wald(table(coupon_data_encoded$`destination_No Urgent Place`,coupon_data_encoded$Y))
+oddsratio.wald(table(coupon_data_encoded$`destination_No Urgent Place`,coupon_data_encoded$Y))
+
+#Confidence interval does not include 1 - reject H0 about independence
+#Odds: odds under no urgent place/ odds under other cases = 1.70
+
+lr_fit <- glm(Y ~ `destination_No Urgent Place`, data = coupon_data_encoded,
+              family=binomial(link='logit'))
+summary(lr_fit)
+
+
+exp(cbind(OR = coef(lr_fit), confint(lr_fit)))
+
+#Odds ratio of 1.70  means that the odds that coupon accepted with destination_No Urgent Place was 1.70 times higher than the odds among controls.
+#`destination_No Urgent Place` might be a factor.
 
