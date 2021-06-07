@@ -11,7 +11,7 @@
 {
   #Install packages
   if(!require("pacman")) install.packages("pacman")
-  pacman::p_load(skim,readr, dplyr, purrr, VIM, ggplot2, plotly,caret)
+  pacman::p_load(skim,readr, dplyr, purrr, VIM, ggplot2, plotly,caret,fastDummies)
   
   #Load Packages
   {
@@ -173,17 +173,27 @@
 # library(plyr)
 # View(table(count(cleaned_data,c(1,2))))
 
-cleaned_data$age <- NULL; cleaned_data$income <- NULL; cleaned_data$occupation<- NULL; cleaned_data$expiration <- NUll
-
 
 # One-hot encoding --------------------------------------------------------
 
 {
-  library(caret)
+  cleaned_data$age <- NULL; cleaned_data$income <- NULL; cleaned_data$occupation<- NULL; cleaned_data$expiration <- NULL
   
-  dummy <- dummyVars(" ~ .", data=cleaned_data)
-  newdata <- data.frame(predict(dummy, newdata = coupon_data_final)) 
+  # library(caret)
+  # dummy <- dummyVars(" ~ .", data=cleaned_data)
+  # coupon_data_encoded <- data.frame(predict(dummy, newdata = cleaned_data)) 
+  
+  encoded <- fastDummies::dummy_cols(cleaned_data, remove_first_dummy = TRUE)
+  
+  coupon_data_encoded <- encoded[ , ((!(colnames(encoded) %in% colnames(cleaned_data))) 
+                                     | (colnames(encoded) %in% c("Y","age_weightage","income_weightage","expiration_weightage")))]
 }
 
 
-# newdata.pca <- prcomp(newdata[,-(which(colnames(newdata)=="Y"))], center = TRUE,scale. = TRUE)
+# PCA ---------------------------------------------------------------------
+
+ 
+# newdata_pca <- prcomp(coupon_data_encoded[,-(which(colnames(coupon_data_encoded)=="Y"))], center = TRUE,scale. = TRUE)
+# newdata_pca$sdev
+# View(newdata_pca$rotation)
+
