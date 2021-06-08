@@ -146,6 +146,10 @@ cleaned_data$Y <- as.character(cleaned_data$Y)
 p1 <- ggplot(cleaned_data, aes(x=destination, fill=Y)) +
     geom_bar(stat="count")
 
+p5 <- ggplot(cleaned_data, aes(x=occupation_class, fill=Y)) +
+  geom_bar(stat="count")
+p5
+
 #For all columns
 for (i in colnames(cleaned_data))
 {p <- ggplot(cleaned_data, aes(x=cleaned_data[[i]], fill=cleaned_data$Y)) +
@@ -199,7 +203,7 @@ coupon_data_encoded <- coupon_data_encoded[ , !(colnames(coupon_data_encoded) %i
 #-----------------MODELING --------------------------------
 
 #-----------------LOGISTIC REGRESSION----------------------
-
+library(caret)
 #train/test split
 
 set.seed(123)
@@ -225,6 +229,7 @@ log_reg <- train(Y ~.,
                method = "glm",
                family=binomial(link='logit'))
 
+
 log_reg
 summary(log_reg)
 
@@ -239,7 +244,7 @@ predicted.classes <- ifelse(probabilities > 0.5, "1", "0")
 
 mean(predicted.classes == test$Y)
 log_reg_prob1 <- predict(log_reg, test)
-log_reg_pred1 <- ifelse(log_reg_prob1 > 0.55,"1","0")
+log_reg_pred1 <- ifelse(log_reg_prob1 > 0.5,"1","0")
 table(Predicted = log_reg_pred1, Actual = test$Y)
 
 confusionMatrix(
@@ -260,7 +265,6 @@ test_roc = roc(test$Y ~ log_reg_prob1, plot = TRUE, print.auc = TRUE)
 
 
 #Check multicollinarity
-
 
 
 #-----------------Linear Discriminant Analysis---------------------

@@ -1,0 +1,315 @@
+---
+title: "Logistic Regression"
+author: "Angelina Khatiwada"
+date: "08 06 2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Dataset infromation
+
+Data was collected via a survey on Amazon Mechanical Turk. The survey describes different driving scenarios including the destination, current time, weather, passenger, etc., and then ask the person whether he will accept the coupon if he is the driver.
+
+- Multivariate dataset
+- Number of Instances: 12684
+- Number of Attributes: 23
+- Associated Tasks: Classification
+- Missing Values: Yes
+
+Some features meaning:
+
+- Bar: never, less1, 1~3, gt8, nan4~8 (feature meaning: how many times do you go to a bar every month?)
+- CoffeeHouse: never, less1, 4~8, 1~3, gt8, nan (feature meaning: how many times do you go to a coffeehouse every month?)
+- CarryAway:n4~8, 1~3, gt8, less1, never (feature meaning: how many times do you get take-away food every month?)
+- RestaurantLessThan20: 4~8, 1~3, less1, gt8, never (feature meaning: how many times do you go to a restaurant with an average expense per person of less than $20 every month?)
+- Restaurant20To50: 1~3, less1, never, gt8, 4~8, nan (feature meaning: how many times do you go to a restaurant with average expense per person of $20 - $50 every month?)
+- toCoupon_GEQ15min:0,1 (feature meaning: driving distance to the restaurant/bar for using the coupon is greater than 15 minutes)
+- toCoupon_GEQ25min:0, 1 (feature meaning: driving distance to the restaurant/bar for using the coupon is greater than 25 minutes)
+- direction_same:0, 1 (feature meaning: whether the restaurant/bar is in the same direction as your current destination)
+- direction_opp:1, 0 (feature meaning: whether the restaurant/bar is in the same direction as your current destination)
+- Y:1, 0 (whether the coupon is accepted)
+
+Source: https://archive.ics.uci.edu/ml/datasets/in-vehicle+coupon+recommendation
+
+```{r message=FALSE, warning=FALSE}
+library(dplyr)
+library(skimr)
+library(ggplot2) 
+library(tidyr)
+#library(fastDummies)
+library(caret)
+library(grid)
+library(gridExtra)
+library("epitools")
+library(pROC)
+library(MASS)
+```
+
+## Data import and summary
+
+
+```{r message=FALSE, warning=FALSE}
+data  <- read.csv("https://raw.githubusercontent.com/rijinbaby/Statistical-Learning/main/in-vehicle-coupon-recommendation.csv", 
+                 header=T, na.strings=c("","NA"))
+dim(data)
+str(data) #data types
+```
+
+
+```{r}
+#glimpse(data)
+#summary(data)
+skim(data) #checking for NA values, unique value in the column
+```
+
+There are NULL values and columns with unique values that should be removed.
+
+## Plotting data
+
+```{r}
+coupon_data  <- read.csv("https://raw.githubusercontent.com/rijinbaby/Statistical-Learning/main/cleaned_data_raw_columns.csv")
+coupon_data$Y <- as.character(coupon_data$Y)
+
+```
+
+```{r eval=FALSE, message=FALSE, warning=FALSE, include=FALSE}
+#coupon_data$age_weightage <- scale(as.numeric(coupon_data$age_weightage), center = FALSE)
+#coupon_data$income_weightage <- scale(as.numeric(coupon_data$income_weightage), center = FALSE)
+#coupon_data$expiration_weightage <- scale(as.numeric(coupon_data$expiration_weightage), center = FALSE)
+
+#skim(coupon_data)
+```
+
+```{r message=FALSE, warning=FALSE}
+#Destination
+p1 <- ggplot(coupon_data, aes(x=destination, fill=Y)) +
+    geom_bar(stat="count")
+
+#passanger 
+p2 <- ggplot(coupon_data, aes(x=passanger, fill=Y)) +
+  geom_bar(stat="count")
+
+#weather
+p3 <- ggplot(coupon_data, aes(x=weather, fill=Y)) +
+  geom_bar(stat="count")
+
+#time
+p4 <- ggplot(coupon_data, aes(x=time, fill=Y)) +
+  geom_bar(stat="count")
+
+#gender
+p5 <- ggplot(coupon_data, aes(x=gender, fill=Y)) +
+  geom_bar(stat="count")
+
+#maritalStatus   
+p6 <- ggplot(coupon_data, aes(x=maritalStatus, fill=Y)) +
+  geom_bar(stat="count")
+
+grid.arrange(p1, p2, p3, p4, p5, p6, ncol=2)
+
+```
+
+```{r}
+#education                       
+p7 <- ggplot(coupon_data, aes(x=education, fill=Y)) +
+  geom_bar(stat="count")+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+p7
+
+#occupation                                          
+p8 <- ggplot(coupon_data, aes(x=occupation_class, fill=Y)) +
+  geom_bar(stat="count")+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+p8
+
+```
+
+```{r}
+#Bar                                                 
+p9 <- ggplot(coupon_data, aes(x=Bar, fill=Y)) +
+  geom_bar(stat="count")
+
+#CoffeeHouse                                       
+p10 <- ggplot(coupon_data, aes(x=CoffeeHouse, fill=Y)) +
+  geom_bar(stat="count")
+
+#CarryAway                       
+p11 <- ggplot(coupon_data, aes(x=CarryAway, fill=Y)) +
+  geom_bar(stat="count")
+
+#RestaurantLessThan20                                
+p12 <- ggplot(coupon_data, aes(x=RestaurantLessThan20, fill=Y)) +
+  geom_bar(stat="count")
+
+#direction_same                                               
+p13 <- ggplot(coupon_data, aes(x=direction_same, fill=Y)) +
+  geom_bar(stat="count")
+
+#has_children                                                
+p14 <- ggplot(coupon_data, aes(x=has_children, fill=Y)) +
+  geom_bar(stat="count")
+
+grid.arrange(p9, p10, p11, p12, p13, p14, ncol=2)
+
+```
+
+
+**For numeric variables**
+```{r}
+#Age histogram
+p15 <- ggplot(data = coupon_data, aes(age_weightage, color = Y))+
+  geom_freqpoly(binwidth = 5, size = 1)
+
+#Income histogram
+p16 <- ggplot(data = coupon_data, aes(income_weightage, color = Y))+
+  geom_freqpoly(binwidth = 5, size = 1)
+
+#Expiration histogram
+p17 <- ggplot(data = coupon_data, aes(expiration_weightage, color = Y))+
+  geom_freqpoly(binwidth = 5, size = 1)
+
+grid.arrange(p15, p16, p17, ncol=2)
+
+```
+
+## Modeling
+
+### Train-test split
+```{r}
+coupon_data_encoded  <- read.csv("https://raw.githubusercontent.com/rijinbaby/Statistical-Learning/main/cleaned_data_encoded.csv")
+
+drops= c("direction_opp_1") #drop additional correlated variables
+coupon_data_encoded <- coupon_data_encoded[ , !(colnames(coupon_data_encoded) %in% drops)]
+coupon_data_encoded$Y <-as.factor(coupon_data_encoded$Y)
+
+```
+
+We created dummy variables, removing the first dummy variable created from each column. 
+This is done to avoid multicollinearity in a multiple regression model caused by included all dummy variables. 
+
+```{r}
+#train/test split
+
+set.seed(123)
+split_train_test  <- createDataPartition(coupon_data_encoded$Y, p = .67,
+                                  list = FALSE,
+                                  times = 1)
+ 
+train <- coupon_data_encoded[ split_train_test,]
+test  <- coupon_data_encoded[-split_train_test,]
+
+```
+
+## Logistic Regression
+
+**Running Cross-Validation with k = 10 folds**
+
+```{r message=FALSE, warning=FALSE}
+# CV  with 10 folds
+train_control <- trainControl(method = "cv", number = 10)
+
+# train the model on training set
+log_reg <- train(Y ~.,
+               data = train,
+               trControl = train_control,
+               method = "glm",
+               family=binomial(link='logit'))
+
+log_reg
+```
+
+```{r}
+summary(log_reg)
+```
+
+### Predictions
+
+**Model accuracy and Confusion matrix**
+```{r}
+log_reg_prob1 <- predict(log_reg, test, type = 'prob')
+log_reg_pred1 <- ifelse(log_reg_prob1[2] > 0.5, 1, 0)
+mean(log_reg_pred1 == test$Y)
+```
+
+```{r}
+table(Predicted = log_reg_pred1, Actual = test$Y)
+
+confusionMatrix(
+  as.factor(log_reg_pred1),
+  as.factor(test$Y),
+  positive = "1" 
+)
+```
+
+High sensitivity: fewer False Negative errors. Low specificity: Many False Positive.
+We can change the threshold 0.5 and set a higher threshold to balance these values.
+
+```{r}
+log_reg_prob1 <- predict(log_reg, test, type = 'prob')
+log_reg_pred1 <- ifelse(log_reg_prob1[2] > 0.55, 1, 0)
+mean(log_reg_pred1 == test$Y)
+
+confusionMatrix(
+  as.factor(log_reg_pred1),
+  as.factor(test$Y),
+  positive = "1" 
+)
+```
+
+**ROC curve**
+```{r}
+test_roc = roc(test$Y ~ log_reg_prob1$"1", plot = TRUE, print.auc = TRUE)
+```
+
+## Linear Discriminant Analysis
+
+```{r}
+lda.fit=lda(Y~.,data = train)
+lda.fit
+
+plot(lda.fit)
+
+```
+
+```{r}
+lda.pred=predict(lda.fit,test)$class
+table(lda.pred,test$Y)
+mean(lda.pred==test$Y)
+```
+
+## Association Rules
+
+```{r}
+assoc <- xtabs(~Y+destination_No.Urgent.Place, data=coupon_data_encoded)
+assoc
+plot(assoc, col=c("green","blue"))
+```
+
+**Testing significance**
+```{r}
+Test <- chisq.test(assoc, correct=FALSE)
+Test
+```
+
+Chi2 is 216, relation between the variables is significant (p-value< 0.05). We reject H0 about independence between variables, however, there is no perfect association
+
+```{r}
+riskratio.wald(table(coupon_data_encoded$destination_No.Urgent.Place,coupon_data_encoded$Y))
+oddsratio.wald(table(coupon_data_encoded$destination_No.Urgent.Place,coupon_data_encoded$Y))
+
+```
+Confidence interval does not include 1 - reject H0 about independence. 
+Odds: odds under no urgent place/ odds under other cases = 1.70
+
+```{r}
+lr_fit <- glm(Y ~ destination_No.Urgent.Place, data = coupon_data_encoded,
+              family=binomial(link='logit'))
+summary(lr_fit)
+
+exp(cbind(OR = coef(lr_fit), confint(lr_fit)))
+
+```
+Odds ratio of 1.70  means that the odds that coupon accepted with destination_No Urgent Place was 1.70 times higher than the odds among controls. Destination_No Urgent Place might be a factor.
