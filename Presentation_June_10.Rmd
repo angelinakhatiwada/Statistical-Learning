@@ -38,6 +38,15 @@ This data was collected via a survey on Amazon Mechanical Turk. The survey descr
     library(VIM)
     library(ggplot2)
     library(plotly)
+    library(caret)
+    library(grid)
+    library(gridExtra)
+    library("epitools")
+    library(pROC)
+    library(MASS)
+    library(class)
+    library(gmodels)
+
 ```
 
 ## Dataset
@@ -106,16 +115,15 @@ This data was collected via a survey on Amazon Mechanical Turk. The survey descr
                                          ,"Installation Maintenance & Repair","Transportation & Material Moving"))]  <- "Craft and related trades workers"
   coupon_data$occupation_class[which(coupon_data$occupation %in% 
                                        c("Community & Social Services","Construction & Extraction","Healthcare Support"
-                                         ,"Life Physical Social Science"))] <- "Technicians and associate professionals"
+                                         ,"Life Physical Social Science"))] <- "Technicians and pro"
   coupon_data$occupation_class[which(coupon_data$occupation %in% 
-                                       c("Personal Care & Service","Protective Service","Sales & Related"))] <- "Service and sales workers"
+                                       c("Personal Care & Service","Protective Service","Sales & Related"))] <- "Service and sales"
   coupon_data$occupation_class[which(coupon_data$occupation %in% 
                                        c("Farming Fishing & Forestry","Office & Administrative Support"
                                          ,"Production Occupations"))] <- "Others"  #own classification
   coupon_data$occupation_class[which(coupon_data$occupation=="Retired")] <- 'Retired' 
   coupon_data$occupation_class[which(coupon_data$occupation=="Student")] <- "Student"
   coupon_data$occupation_class[which(coupon_data$occupation=="Unemployed")] <- "Unemployed"
-  # print(table(coupon_data$occupation_class))
   
   occup_class <- coupon_data %>%
   group_by(occupation_class) %>%
@@ -132,6 +140,10 @@ This data was collected via a survey on Amazon Mechanical Turk. The survey descr
   # passenger
   coupon_data$passanger[which(coupon_data$passanger=="Friend(s)")] <- "Friends"
   coupon_data$passanger[which(coupon_data$passanger=="Kid(s)")] <- "Kids"
+  
+  # education
+  coupon_data$education[which(coupon_data$education=="Graduate degree (Masters or Doctorate)")] <- "Graduate degree"
+  # print(table(coupon_data$occupation_class))
   
 }
 ```
@@ -154,9 +166,10 @@ knitr::kable(occup_class, format = "html")
 ```
 ### Plotting data
 
+
 ```{r message=FALSE, warning=FALSE}
 library(gridExtra)
-cleaned_data$Y <- as.character(cleaned_data$Y)
+cleaned_data$Y <- as.factor(cleaned_data$Y)
 
 #Destination
 p1 <- ggplot(cleaned_data, aes(x=destination, fill=Y)) +
@@ -180,7 +193,8 @@ p5 <- ggplot(cleaned_data, aes(x=gender, fill=Y)) +
 
 #maritalStatus   
 p6 <- ggplot(cleaned_data, aes(x=maritalStatus, fill=Y)) +
-  geom_bar(stat="count")
+  geom_bar(stat="count")+
+  theme(axis.text.x = element_text(angle = 15, hjust = 1))
 
 grid.arrange(p1, p2, p3, p4, p5, p6, ncol=2)
 
@@ -246,6 +260,302 @@ p17 <- ggplot(data = cleaned_data, aes(expiration_weightage, color = Y))+
   geom_freqpoly(binwidth = 5, size = 1)
 
 grid.arrange(p15, p16, p17, ncol=2)
+```
+
+## Modeling
+
+We drop the variable 'direction_opp' that is perfectly correlated with the varible 'direction_same'.We also drop the categorical varibles 'age', 'income', 'expiration', for which we created corresponding numeric variables. 'occupation' will be replaced by 'occupation_class' in the model.  
+
+- Y - factor
+- 'age', 'income', 'expiration' - numeric
+- other variables' type is characteric, so the dummies will be created automatically, removing the first dummy variable created from each column. This is done to avoid multicollinearity. 
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+drops= c("direction_opp", 'age', 'income', 'expiration', 'occupation') #drop additional correlated variables
+cleaned_data <- cleaned_data[ , !(colnames(cleaned_data) %in% drops)]
+
+str(cleaned_data)
+```
+
+## Logistic Regression
+
+**Anova Chi-square test** to check the overall effect of variables on the dependent variable
+
+**Multicollinearity check**
+
+Dataset without splitting
+
+```{r}
+
+log_model <- glm(Y ~., data = cleaned_data, family=binomial(link='logit'))
+summary(log_model)
+
+anova(log_model, test = 'Chisq')
+
+#car::vif(log_model)
+```
+
+Insignificant coefficients (with p-value > 0.05) are:
+
+- has_children
+- toCoupon_GEQ25min ??
+- income_weightage
+- age_weightage ??
+- time ??
+
+**Running Cross-Validation with k = 10 folds** on the training set without removing the variables
+
+```{r message=FALSE, warning=FALSE}
+
+#train/test split
+
+set.seed(123)
+split_train_test  <- createDataPartition(cleaned_data$Y, p = .67,
+                                  list = FALSE,
+                                  times = 1)
+ 
+train <- cleaned_data[ split_train_test,]
+test  <- cleaned_data[-split_train_test,]
+
+# CV  with 10 folds
+train_control <- trainControl(method = "cv", number = 10)
+
+# train the model on training set
+log_reg <- train(Y ~.,
+               data = train,
+               trControl = train_control,
+               method = "glm",
+               family=binomial(link='logit'))
+
+log_reg
+
+```
+
+**Removing the variables**
+
+```{r}
+#remove variables
+  cleaned_data$has_children <- NULL
+  cleaned_data$toCoupon_GEQ25min <- NULL
+  cleaned_data$income_weightage <- NULL
+
+  cleaned_data$time <- NULL # perfect collinearity with predictor variable
+```
+
+```{r}
+log_model <- glm(Y ~., data = cleaned_data, family=binomial(link='logit'))
+summary(log_model)
+
+anova(log_model, test = 'Chisq')
+
+car::vif(log_model)
+```
+
+**Running Cross-Validation with k = 10 folds** on the training set with some variables removed
+
+```{r message=FALSE, warning=FALSE}
+set.seed(123)
+split_train_test  <- createDataPartition(cleaned_data$Y, p = .67,
+                                  list = FALSE,
+                                  times = 1)
+ 
+train <- cleaned_data[ split_train_test,]
+test  <- cleaned_data[-split_train_test,]
+
+#CV  with 10 folds
+train_control <- trainControl(method = "cv", number = 10)
+
+# train the model on training set
+log_reg <- train(Y ~.,
+               data = train,
+               trControl = train_control,
+               method = "glm",
+               family=binomial(link='logit'))
+
+log_reg
+```
+
+### Predictions
+
+**Model accuracy and Confusion matrix**
+```{r}
+log_reg_prob1 <- predict(log_reg, test, type = 'prob')
+log_reg_pred1 <- ifelse(log_reg_prob1[2] > 0.5, 1, 0)
+mean(log_reg_pred1 == test$Y)
+```
+
+```{r}
+confusionMatrix(
+  as.factor(log_reg_pred1),
+  as.factor(test$Y),
+  positive = "1" 
+)
+```
+
+High sensitivity: fewer False Negative errors. Low specificity: Many False Positive.
+
+We can change the threshold 0.5 and set a higher threshold to balance these values.
+
+```{r}
+log_reg_prob1 <- predict(log_reg, test, type = 'prob')
+log_reg_pred1 <- ifelse(log_reg_prob1[2] > 0.55, 1, 0)
+
+confusionMatrix(
+  as.factor(log_reg_pred1),
+  as.factor(test$Y),
+  positive = "1" 
+)
+```
+
+**ROC curve**
+```{r}
+test_roc = roc(test$Y ~ log_reg_prob1$"1", plot = TRUE, print.auc = TRUE)
+```
+
+## Linear Discriminant Analysis
+
+With the removed variables
+
+```{r}
+lda.fit=lda(Y~.,data = train)
+lda.fit
+
+plot(lda.fit)
+
+```
+
+```{r}
+lda.pred=predict(lda.fit,test)$class
+table(lda.pred,test$Y)
+mean(lda.pred==test$Y)
+```
+LDA predicts more False Positives as well
+
+## Association Rules
+
+We analyse association between Y and the 'direction_same', which is the significant variable
+
+```{r}
+assoc <- xtabs(~Y+direction_same, data=cleaned_data)
+assoc
+plot(assoc, col=c("green","blue"))
+```
+
+**Testing significance**
+```{r}
+Test <- chisq.test(assoc, correct=FALSE)
+Test
+```
+
+Chi2 is 2.7, relation between the variables is not significant (p-value> 0.05). We accept H0 about independence between the variables, there is no association.
+
+```{r}
+riskratio.wald(table(cleaned_data$direction_same,cleaned_data$Y))
+oddsratio.wald(table(cleaned_data$direction_same,cleaned_data$Y))
+
+```
+Confidence interval includes 1 - accept H0 about independence. 
+
+Odds: odds under direction same/ odds under direction opp = 1.07
+
+```{r}
+lr_fit <- glm(Y ~ direction_same, data = cleaned_data,
+              family=binomial(link='logit'))
+summary(lr_fit)
+
+exp(cbind(OR = coef(lr_fit), confint(lr_fit)))
+
+```
+Direction is not a factor.
+
+## KNN model
+
+Uploading a dataset with dummies that are all numeric 
+
+Algorithms which use distance based methods require all variables to be numeric
+```{r}
+
+coupon_data_encoded  <- read.csv("https://raw.githubusercontent.com/rijinbaby/Statistical-Learning/main/cleaned_data_encoded.csv")
+
+```
+
+```{r}
+##the normalization function is created
+nor <-function(x) { (x -min(x))/(max(x)-min(x))   }
+coupon_data_encoded[,c("age_weightage","expiration_weightage","income_weightage")] <-
+  as.data.frame(lapply(coupon_data_encoded[,c("age_weightage","expiration_weightage","income_weightage")],nor))
+```
+
+
+```{r}
+#train/test split
+
+set.seed(123)
+split_train_test  <- createDataPartition(coupon_data_encoded$Y, p = .67,
+                                  list = FALSE,
+                                  times = 1)
+
+train <- coupon_data_encoded[ split_train_test,]
+test  <- coupon_data_encoded[-split_train_test,]
+
+train_label <- train$Y
+test_label <- test$Y
+
+test$Y <- NULL
+train$Y <- NULL
+
+
+```
+
+**KNN confusion matrix and accuracy for K=10**
+
+```{r}
+
+##run knn function
+
+model_knn <- knn(train = train, test = test ,cl=train_label,k=10)
+
+##create confusion matrix
+tab <- table(model_knn,test_label)
+tab
+accuracy <- function(x){sum(diag(x)/(sum(rowSums(x)))) * 100}
+accuracy(tab)
+
+CrossTable(x=model_knn, y=test_label, prop.chisq=FALSE) 
+```
+
+Check training and test errors for different values of K
+
+```{r}
+#loop for different  0<K<21
+k <- 1
+accuracy_scores_test <- c()
+accuracy_scores_train <- c()
+k_values <- c()
+while (k < 16) {
+  k_values <- c(k_values, k)
+  test_knn <- knn(train = train, test = test ,cl=train_label,k=k)
+  train_knn <- knn(train = train, test = train ,cl=train_label,k=k)
+  tab_test <- table(test_knn,test_label)
+  tab_train <- table(train_knn,train_label)
+  accuracy_scores_test <- c(accuracy_scores_test, accuracy(tab_test))
+  accuracy_scores_train <- c(accuracy_scores_train, accuracy(tab_train))
+  k = k+1
+}
+
+acc = cbind(data.frame(k_values), data.frame(accuracy_scores_test), data.frame(accuracy_scores_train))
+acc
+
+```
+
+Plotting accuracy for training (blue) and test sets (red)
+
+```{r}
+
+ggplot(acc, aes(x=k_values)) + 
+  geom_line(aes(y = accuracy_scores_test), color = "red", size=1.3) + 
+  geom_line(aes(y = accuracy_scores_train), color="blue", size=1.3) 
+
 ```
 
 <!-- ## one-hot encoding -->
