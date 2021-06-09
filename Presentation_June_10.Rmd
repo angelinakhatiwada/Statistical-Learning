@@ -1,0 +1,278 @@
+---
+title: "Statistical Learning - Data preparation & Supervised Learning"
+author: "Angelina Khatiwada, Rijin Baby"
+date: "09/06/2021"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Data Set Information:
+
+This data was collected via a survey on Amazon Mechanical Turk. The survey describes different driving scenarios including the destination, current time, weather, passenger, etc., and then ask the person whether he will accept the coupon if he is the driver.
+
+## Attribute Information:
+
+- expiration: 1d, 2h (the coupon expires in 1 day or in 2 hours)
+- Bar: never, less1, 1~3, gt8, nan4~8 (feature meaning: how many times do you go to a bar every month?)
+- CoffeeHouse: never, less1, 4~8, 1~3, gt8, nan (feature meaning: how many times do you go to a coffeehouse every month?)
+- CarryAway:n4~8, 1~3, gt8, less1, never (feature meaning: how many times do you get take-away food every month?)
+- RestaurantLessThan20: 4~8, 1~3, less1, gt8, never (feature meaning: how many times do you go to a restaurant with an average expense per person of less than $20 every month?)
+- Restaurant20To50: 1~3, less1, never, gt8, 4~8, nan (feature meaning: how many times do you go to a restaurant with average expense per person of $20 - $50 every month?)
+- toCoupon_GEQ15min:0,1 (feature meaning: driving distance to the restaurant/bar for using the coupon is greater than 15 minutes)
+- toCoupon_GEQ25min:0, 1 (feature meaning: driving distance to the restaurant/bar for using the coupon is greater than 25 minutes)
+- direction_same:0, 1 (feature meaning: whether the restaurant/bar is in the same direction as your current destination)
+- direction_opp:1, 0 (feature meaning: whether the restaurant/bar is in the same direction as your current destination)
+- Y:1, 0 (whether the coupon is accepted)
+
+```{r message=FALSE, warning=FALSE}
+    library(skimr)
+    library(readr)
+    library(plyr)
+    library(dplyr)
+    library(purrr)
+    library(VIM)
+    library(ggplot2)
+    library(plotly)
+```
+
+## Dataset
+```{r message=FALSE, warning=FALSE}
+  in_vehicle_coupon_recommendation <- read_csv("https://raw.githubusercontent.com/rijinbaby/Statistical-Learning/main/in-vehicle-coupon-recommendation.csv")
+  coupon_data <- in_vehicle_coupon_recommendation
+  coupon_data <- as.data.frame(coupon_data)
+  
+  library(purrr)
+  # View(coupon_data %>% map(table))
+  coupon_data %>% map(table)
+```
+### Missing & unique value check
+```{r}
+  (colMeans(is.na(coupon_data))*100)
+  coupon_data$car <- NULL # no data at all - 4 other with <2% missing
+  
+  which(apply(coupon_data, 2, function(x) length(unique(x)))==1)
+  coupon_data$toCoupon_GEQ5min <- NULL # removing column with single value
+```
+### New Variables
+```{r message=FALSE, warning=FALSE}
+{
+  coupon_data[] <- lapply(coupon_data, as.character)
+  coupon_data$Y <- as.numeric(coupon_data$Y)
+  
+  # age column - Creating a new column to give numerical weightage
+  table(coupon_data$age)
+  coupon_data$age_weightage <- NA
+  coupon_data$age_weightage[which(coupon_data$age=="below21")] <- 1
+  coupon_data$age_weightage[which(coupon_data$age=="21")] <- 2
+  coupon_data$age_weightage[which(coupon_data$age=="26")] <- 3
+  coupon_data$age_weightage[which(coupon_data$age=="31")] <- 4
+  coupon_data$age_weightage[which(coupon_data$age=="36")] <- 5
+  coupon_data$age_weightage[which(coupon_data$age=="41")] <- 6
+  coupon_data$age_weightage[which(coupon_data$age=="46")] <- 7
+  coupon_data$age_weightage[which(coupon_data$age=="50plus")] <- 8
+  table(coupon_data$age_weightage)
+  
+  # temp & weather
+  # View(table(coupon_data$weather,coupon_data$temperature))
+  
+  # Income - Creating a new column to give numerical weightage
+  table(coupon_data$income)
+  coupon_data$income_weightage <- NA
+  coupon_data$income_weightage[which(coupon_data$income=="Less than $12500")] <- 1
+  coupon_data$income_weightage[which(coupon_data$income=="$12500 - $24999")] <- 2
+  coupon_data$income_weightage[which(coupon_data$income=="$25000 - $37499")] <- 3
+  coupon_data$income_weightage[which(coupon_data$income=="$37500 - $49999")] <- 4
+  coupon_data$income_weightage[which(coupon_data$income=="$50000 - $62499")] <- 5
+  coupon_data$income_weightage[which(coupon_data$income=="$62500 - $74999")] <- 6
+  coupon_data$income_weightage[which(coupon_data$income=="$75000 - $87499")] <- 7
+  coupon_data$income_weightage[which(coupon_data$income=="$87500 - $99999")] <- 8
+  coupon_data$income_weightage[which(coupon_data$income=="$100000 or More")] <- 9
+  table(coupon_data$income_weightage)
+  
+  # Income - Creating a new column to re-classify reference - https://en.wikipedia.org/wiki/International_Standard_Classification_of_Occupations
+  (table(coupon_data$occupation))
+  coupon_data$occupation_class <- NA
+  coupon_data$occupation_class[which(coupon_data$occupation %in% 
+                                       c("Architecture & Engineering","Arts Design Entertainment Sports & Media"
+                                         ,"Business & Financial","Computer & Mathematical","Education&Training&Library"
+                                         ,"Healthcare Practitioners & Technical","Legal","Management"))] <- "Professionals"
+  coupon_data$occupation_class[which(coupon_data$occupation %in% 
+                                       c("Building & Grounds Cleaning & Maintenance","Food Preparation & Serving Related"
+                                         ,"Installation Maintenance & Repair","Transportation & Material Moving"))]  <- "Craft and related trades workers"
+  coupon_data$occupation_class[which(coupon_data$occupation %in% 
+                                       c("Community & Social Services","Construction & Extraction","Healthcare Support"
+                                         ,"Life Physical Social Science"))] <- "Technicians and associate professionals"
+  coupon_data$occupation_class[which(coupon_data$occupation %in% 
+                                       c("Personal Care & Service","Protective Service","Sales & Related"))] <- "Service and sales workers"
+  coupon_data$occupation_class[which(coupon_data$occupation %in% 
+                                       c("Farming Fishing & Forestry","Office & Administrative Support"
+                                         ,"Production Occupations"))] <- "Others"  #own classification
+  coupon_data$occupation_class[which(coupon_data$occupation=="Retired")] <- 'Retired' 
+  coupon_data$occupation_class[which(coupon_data$occupation=="Student")] <- "Student"
+  coupon_data$occupation_class[which(coupon_data$occupation=="Unemployed")] <- "Unemployed"
+  # print(table(coupon_data$occupation_class))
+  
+  occup_class <- coupon_data %>%
+  group_by(occupation_class) %>%
+  summarise("Actual_occupation" = occupation)
+  occup_class <- unique(occup_class)
+ 
+                                       
+  # TIME VARIABLE
+  table(coupon_data$expiration)
+  coupon_data$expiration_weightage <- NA
+  coupon_data$expiration_weightage[which(coupon_data$expiration=="2h")] <- 2
+  coupon_data$expiration_weightage[which(coupon_data$expiration=="1d")] <- 24
+  
+  # passenger
+  coupon_data$passanger[which(coupon_data$passanger=="Friend(s)")] <- "Friends"
+  coupon_data$passanger[which(coupon_data$passanger=="Kid(s)")] <- "Kids"
+  
+}
+```
+```{r}
+ 
+knitr::kable(occup_class, format = "html")
+```
+
+### missing imputation knn approach
+```{r}
+  library(VIM)
+  # colMeans(is.na(coupon_data))*100
+  # which(colMeans(is.na(coupon_data))>0)
+  cleaned_data <- kNN(coupon_data
+                           , variable = c("Bar","CoffeeHouse","CarryAway","RestaurantLessThan20","Restaurant20To50")
+                           , k = 5)
+  cleaned_data <- cleaned_data[,1:ncol(coupon_data)]
+  # coupon_data_final %>% map(table)
+  colMeans(is.na(cleaned_data))*100
+```
+### Plotting data
+
+```{r message=FALSE, warning=FALSE}
+library(gridExtra)
+cleaned_data$Y <- as.character(cleaned_data$Y)
+
+#Destination
+p1 <- ggplot(cleaned_data, aes(x=destination, fill=Y)) +
+    geom_bar(stat="count")
+
+#passanger 
+p2 <- ggplot(cleaned_data, aes(x=passanger, fill=Y)) +
+  geom_bar(stat="count")
+
+#weather
+p3 <- ggplot(cleaned_data, aes(x=weather, fill=Y)) +
+  geom_bar(stat="count")
+
+#time
+p4 <- ggplot(cleaned_data, aes(x=time, fill=Y)) +
+  geom_bar(stat="count")
+
+#gender
+p5 <- ggplot(cleaned_data, aes(x=gender, fill=Y)) +
+  geom_bar(stat="count")
+
+#maritalStatus   
+p6 <- ggplot(cleaned_data, aes(x=maritalStatus, fill=Y)) +
+  geom_bar(stat="count")
+
+grid.arrange(p1, p2, p3, p4, p5, p6, ncol=2)
+
+```
+
+```{r}
+#education                       
+p7 <- ggplot(cleaned_data, aes(x=education, fill=Y)) +
+  geom_bar(stat="count")+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+p7
+
+#occupation                                          
+p8 <- ggplot(cleaned_data, aes(x=occupation_class, fill=Y)) +
+  geom_bar(stat="count")+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+p8
+
+```
+
+```{r}
+#Bar                                                 
+p9 <- ggplot(cleaned_data, aes(x=Bar, fill=Y)) +
+  geom_bar(stat="count")
+
+#CoffeeHouse                                       
+p10 <- ggplot(cleaned_data, aes(x=CoffeeHouse, fill=Y)) +
+  geom_bar(stat="count")
+
+#CarryAway                       
+p11 <- ggplot(cleaned_data, aes(x=CarryAway, fill=Y)) +
+  geom_bar(stat="count")
+
+#RestaurantLessThan20                                
+p12 <- ggplot(cleaned_data, aes(x=RestaurantLessThan20, fill=Y)) +
+  geom_bar(stat="count")
+
+#direction_same                                               
+p13 <- ggplot(cleaned_data, aes(x=direction_same, fill=Y)) +
+  geom_bar(stat="count")
+
+#has_children                                                
+p14 <- ggplot(cleaned_data, aes(x=has_children, fill=Y)) +
+  geom_bar(stat="count")
+
+grid.arrange(p9, p10, p11, p12, p13, p14, ncol=2)
+
+```
+
+
+**For numeric variables**
+```{r}
+#Age histogram
+p15 <- ggplot(data = cleaned_data, aes(age_weightage, color = Y))+
+  geom_freqpoly(binwidth = 5, size = 1)
+
+#Income histogram
+p16 <- ggplot(data = cleaned_data, aes(income_weightage, color = Y))+
+  geom_freqpoly(binwidth = 5, size = 1)
+
+#Expiration histogram
+p17 <- ggplot(data = cleaned_data, aes(expiration_weightage, color = Y))+
+  geom_freqpoly(binwidth = 5, size = 1)
+
+grid.arrange(p15, p16, p17, ncol=2)
+```
+
+<!-- ## one-hot encoding -->
+```{r}
+  # cleaned_data$age <- NULL; cleaned_data$income <- NULL; cleaned_data$occupation<- NULL; cleaned_data$expiration <- NULL
+  # 
+  # # library(caret)
+  # # dummy <- dummyVars(" ~ .", data=cleaned_data)
+  # # coupon_data_encoded <- data.frame(predict(dummy, newdata = cleaned_data)) 
+  # 
+  # encoded <- fastDummies::dummy_cols(cleaned_data, remove_first_dummy = TRUE)
+  # 
+  # coupon_data_encoded <- encoded[ , ((!(colnames(encoded) %in% colnames(cleaned_data))) 
+  #                                    | (colnames(encoded) %in% c("Y","age_weightage","income_weightage","expiration_weightage")))]
+ 
+
+```
+<!-- ## PCA -->
+
+```{r}
+# newdata_pca <- prcomp(coupon_data_encoded[,-(which(colnames(coupon_data_encoded)=="Y"))], center = TRUE,scale. = TRUE)
+# summary(newdata_pca) # need to select PC32 for a cumulative variance of > 80
+# newdata_pca$sdev
+# View(newdata_pca$rotation)
+```
+
+
+```{r}
+```
+
