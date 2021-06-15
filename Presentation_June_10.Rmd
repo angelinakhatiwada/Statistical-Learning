@@ -733,6 +733,8 @@ ggplot(acc, aes(x=k_values)) +
 ### CLUSTERING
 
 
+**HIERARCHICAL CLUSTERING**
+
 <!-- ## one-hot encoding -->
 ```{r}
   # cleaned_data$age <- NULL; cleaned_data$income <- NULL; cleaned_data$occupation<- NULL; cleaned_data$expiration <- NULL
