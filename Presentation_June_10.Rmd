@@ -71,39 +71,40 @@ This data was collected via a survey on Amazon Mechanical Turk. The survey descr
 ```{r message=FALSE, warning=FALSE}
 {
   coupon_data[] <- lapply(coupon_data, as.character)
-  coupon_data$Y <- as.numeric(coupon_data$Y)
+  #coupon_data$Y <- as.numeric(coupon_data$Y)
+  coupon_data$Y <- as.factor(coupon_data$Y)
   
   # age column - Creating a new column to give numerical weightage
-  table(coupon_data$age)
-  coupon_data$age_weightage <- NA
-  coupon_data$age_weightage[which(coupon_data$age=="below21")] <- 1
-  coupon_data$age_weightage[which(coupon_data$age=="21")] <- 2
-  coupon_data$age_weightage[which(coupon_data$age=="26")] <- 3
-  coupon_data$age_weightage[which(coupon_data$age=="31")] <- 4
-  coupon_data$age_weightage[which(coupon_data$age=="36")] <- 5
-  coupon_data$age_weightage[which(coupon_data$age=="41")] <- 6
-  coupon_data$age_weightage[which(coupon_data$age=="46")] <- 7
-  coupon_data$age_weightage[which(coupon_data$age=="50plus")] <- 8
-  table(coupon_data$age_weightage)
+  #table(coupon_data$age)
+  #coupon_data$age_weightage <- NA
+  #coupon_data$age_weightage[which(coupon_data$age=="below21")] <- 1
+  #coupon_data$age_weightage[which(coupon_data$age=="21")] <- 2
+  #coupon_data$age_weightage[which(coupon_data$age=="26")] <- 3
+  #coupon_data$age_weightage[which(coupon_data$age=="31")] <- 4
+  #coupon_data$age_weightage[which(coupon_data$age=="36")] <- 5
+  #coupon_data$age_weightage[which(coupon_data$age=="41")] <- 6
+  #coupon_data$age_weightage[which(coupon_data$age=="46")] <- 7
+  #coupon_data$age_weightage[which(coupon_data$age=="50plus")] <- 8
+  #table(coupon_data$age_weightage)
   
   # temp & weather
   # View(table(coupon_data$weather,coupon_data$temperature))
   
   # Income - Creating a new column to give numerical weightage
-  table(coupon_data$income)
-  coupon_data$income_weightage <- NA
-  coupon_data$income_weightage[which(coupon_data$income=="Less than $12500")] <- 1
-  coupon_data$income_weightage[which(coupon_data$income=="$12500 - $24999")] <- 2
-  coupon_data$income_weightage[which(coupon_data$income=="$25000 - $37499")] <- 3
-  coupon_data$income_weightage[which(coupon_data$income=="$37500 - $49999")] <- 4
-  coupon_data$income_weightage[which(coupon_data$income=="$50000 - $62499")] <- 5
-  coupon_data$income_weightage[which(coupon_data$income=="$62500 - $74999")] <- 6
-  coupon_data$income_weightage[which(coupon_data$income=="$75000 - $87499")] <- 7
-  coupon_data$income_weightage[which(coupon_data$income=="$87500 - $99999")] <- 8
-  coupon_data$income_weightage[which(coupon_data$income=="$100000 or More")] <- 9
-  table(coupon_data$income_weightage)
+  #table(coupon_data$income)
+  #coupon_data$income_weightage <- NA
+  #coupon_data$income_weightage[which(coupon_data$income=="Less than $12500")] <- 1
+  #coupon_data$income_weightage[which(coupon_data$income=="$12500 - $24999")] <- 2
+  #coupon_data$income_weightage[which(coupon_data$income=="$25000 - $37499")] <- 3
+  #coupon_data$income_weightage[which(coupon_data$income=="$37500 - $49999")] <- 4
+  #coupon_data$income_weightage[which(coupon_data$income=="$50000 - $62499")] <- 5
+  #coupon_data$income_weightage[which(coupon_data$income=="$62500 - $74999")] <- 6
+  #coupon_data$income_weightage[which(coupon_data$income=="$75000 - $87499")] <- 7
+  #coupon_data$income_weightage[which(coupon_data$income=="$87500 - $99999")] <- 8
+  #coupon_data$income_weightage[which(coupon_data$income=="$100000 or More")] <- 9
+  #table(coupon_data$income_weightage)
   
-  # Income - Creating a new column to re-classify reference - https://en.wikipedia.org/wiki/International_Standard_Classification_of_Occupations
+  # Occupation - Creating a new column to re-classify reference - https://en.wikipedia.org/wiki/International_Standard_Classification_of_Occupations
   (table(coupon_data$occupation))
   coupon_data$occupation_class <- NA
   coupon_data$occupation_class[which(coupon_data$occupation %in% 
@@ -136,6 +137,7 @@ This data was collected via a survey on Amazon Mechanical Turk. The survey descr
   coupon_data$expiration_weightage <- NA
   coupon_data$expiration_weightage[which(coupon_data$expiration=="2h")] <- 2
   coupon_data$expiration_weightage[which(coupon_data$expiration=="1d")] <- 24
+  coupon_data$expiration_weightage <- scale(as.numeric(coupon_data$expiration_weightage), center = FALSE)
   
   # passenger
   coupon_data$passanger[which(coupon_data$passanger=="Friend(s)")] <- "Friends"
@@ -169,7 +171,7 @@ knitr::kable(occup_class, format = "html")
 
 ```{r message=FALSE, warning=FALSE}
 library(gridExtra)
-cleaned_data$Y <- as.factor(cleaned_data$Y)
+
 
 #Destination
 p1 <- ggplot(cleaned_data, aes(x=destination, fill=Y)) +
@@ -248,18 +250,18 @@ grid.arrange(p9, p10, p11, p12, p13, p14, ncol=2)
 **For numeric variables**
 ```{r}
 #Age histogram
-p15 <- ggplot(data = cleaned_data, aes(age_weightage, color = Y))+
-  geom_freqpoly(binwidth = 5, size = 1)
+#p15 <- ggplot(data = cleaned_data, aes(age_weightage, color = Y))+
+  #geom_freqpoly(binwidth = 5, size = 1)
 
 #Income histogram
-p16 <- ggplot(data = cleaned_data, aes(income_weightage, color = Y))+
-  geom_freqpoly(binwidth = 5, size = 1)
+#p16 <- ggplot(data = cleaned_data, aes(income_weightage, color = Y))+
+  #geom_freqpoly(binwidth = 5, size = 1)
 
 #Expiration histogram
 p17 <- ggplot(data = cleaned_data, aes(expiration_weightage, color = Y))+
   geom_freqpoly(binwidth = 5, size = 1)
 
-grid.arrange(p15, p16, p17, ncol=2)
+p17
 ```
 
 ## Modeling
@@ -271,115 +273,171 @@ We drop the variable 'direction_opp' that is perfectly correlated with the varib
 - other variables' type is characteric, so the dummies will be created automatically, removing the first dummy variable created from each column. This is done to avoid multicollinearity. 
 
 ```{r echo=TRUE, message=FALSE, warning=FALSE}
-drops= c("direction_opp", 'age', 'income', 'expiration', 'occupation') #drop additional correlated variables
+cleaned_data$Y <- as.factor(cleaned_data$Y)
+cleaned_data$has_children <- as.factor(cleaned_data$has_children)
+cleaned_data$toCoupon_GEQ15min <- as.factor(cleaned_data$toCoupon_GEQ15min)
+cleaned_data$toCoupon_GEQ25min <- as.factor(cleaned_data$toCoupon_GEQ25min)
+cleaned_data$direction_same <- as.factor(cleaned_data$direction_same)
+
+drops= c("direction_opp", 'expiration', 'occupation', 'time') #drop additional correlated variables
 cleaned_data <- cleaned_data[ , !(colnames(cleaned_data) %in% drops)]
 
+#cleaned_data <- fastDummies::dummy_cols(cleaned_data, remove_first_dummy = TRUE, select_columns ='time')
+
 str(cleaned_data)
+
 ```
 
 ## Logistic Regression
 
-**Anova Chi-square test** to check the overall effect of variables on the dependent variable
+**Chi-square test** to check the overall effect of variables on the dependent variable
 
 **Multicollinearity check**
 
-Dataset without splitting
+Model with all parameters on dataset without splitting
 
 ```{r}
 
-log_model <- glm(Y ~., data = cleaned_data, family=binomial(link='logit'))
-summary(log_model)
+full_log_model <- glm(Y ~., data = cleaned_data, family=binomial(link='logit'))
+summary(full_log_model)
 
-anova(log_model, test = 'Chisq')
+anova(full_log_model, test = 'Chisq')
 
-#car::vif(log_model)
+car::vif(full_log_model)
 ```
 
-Insignificant coefficients (with p-value > 0.05) are:
+Insignificant coefficients (with p-value > 0.05) according to chi2 check are:
 
 - has_children
-- toCoupon_GEQ25min ??
-- income_weightage
-- age_weightage ??
-- time ??
+- CarryAway  
+- toCoupon_GEQ25min
 
-**Running Cross-Validation with k = 10 folds** on the training set without removing the variables
+Porblem of multicollinearity solved. 
 
-```{r message=FALSE, warning=FALSE}
+## Stepwise Selection
 
-#train/test split
+ 1) Both directions
+```{r}
+library(caret)
+library(leaps)
+library(MASS)
+library(caret)
 
+# Fit the both direction model 
+step_model <- stepAIC(full_log_model, trace = FALSE)
+#summary(step_model)
+step_model$anova
+```
+
+2) Forward direction
+```{r}
+# Fit the forward model
+forward <- stepAIC(full_log_model, direction = 'forward', trace = FALSE)
+#summary(step_model)
+forward$anova
+
+```
+With forward direction we get the same result as we had with a full model, forward begins with a Null model(intercept only model).
+
+```{r}
+
+# Fit the backward model
+backward <- stepAIC(full_log_model, direction = 'backward', trace = FALSE)
+#summary(step_model)
+backward$anova
+
+
+```
+The backward procedure eliminated exactly the same variables as the “both” procedure.
+
+Different criteria can be assigned to the stepAIC() function for stepwise selection. The default is AIC, which is performed by assigning the argument k to 2 (default).
+
+We tried running bestglm, but there is a hard-coded constraint in bestglm (15 predictors means there are 2^15 = 32768 candidate models). In our case we have around 70 variables counting dummies.
+
+```{r eval=FALSE, include=FALSE}
+library(leaps)
+library(bestglm)
+args(bestglm)
+```
+
+
+```{r eval=FALSE, include=FALSE}
+coupon_data_encoded = cleaned_data
+
+coupon_data_encoded$Y <- as.numeric(cleaned_data$Y)
+coupon_data_encoded$has_children <- as.numeric(coupon_data_encoded$has_children)
+coupon_data_encoded$toCoupon_GEQ15min <- as.numeric(coupon_data_encoded$toCoupon_GEQ15min)
+coupon_data_encoded$toCoupon_GEQ25min <- as.numeric(coupon_data_encoded$toCoupon_GEQ25min)
+coupon_data_encoded$direction_same <- as.numeric(coupon_data_encoded$direction_same)
+
+encoded <- fastDummies::dummy_cols(coupon_data_encoded, remove_first_dummy = TRUE)
+  
+coupon_data_encoded <- encoded[ , ((!(colnames(encoded) %in% colnames(coupon_data_encoded))) 
+                                     | (colnames(encoded) %in% c("Y" ,"expiration_weightage", 'has_children', 'toCoupon_GEQ15min', 'toCoupon_GEQ25min', 'direction_same' )))]
+  
+```
+
+```{r eval=FALSE, include=FALSE}
+bestglm(coupon_data_encoded, IC ='BIC', family = binomial)
+```
+
+## Running 10 fold Cross-Validation on Full and Stepwise model using training data
+
+Initially split in train and test sets to avoid overfitting
+
+```{r}
 set.seed(123)
-split_train_test  <- createDataPartition(cleaned_data$Y, p = .67,
-                                  list = FALSE,
-                                  times = 1)
+split_train_test  <- createDataPartition(cleaned_data$Y, p = .67,list = FALSE, times = 1)
  
 train <- cleaned_data[ split_train_test,]
 test  <- cleaned_data[-split_train_test,]
 
-# CV  with 10 folds
-train_control <- trainControl(method = "cv", number = 10)
 
+#CV  with 10 folds on full model
+train_control <- trainControl(method = "cv", number = 10)
 # train the model on training set
-log_reg <- train(Y ~.,
+log_reg_full <- train(Y ~.,
                data = train,
+               trControl = train_control,
+               method = "glm",
+               family=binomial(link='logit')) 
+
+log_reg_full 
+#summary(log_reg_full)
+
+
+#CV  with 10 folds on step model
+train_control <- trainControl(method = "cv", number = 10)
+# train the model on training set
+log_reg_step <- train(Y ~.,
+               data=subset(train, select=c( -CarryAway, -RestaurantLessThan20)),
                trControl = train_control,
                method = "glm",
                family=binomial(link='logit'))
 
-log_reg
+log_reg_step
+#summary(log_reg_step)
 
 ```
+Full model AIC: 10138
+Stepwise model AIC: 10134
 
-**Removing the variables**
-
-```{r}
-#remove variables
-  cleaned_data$has_children <- NULL
-  cleaned_data$toCoupon_GEQ25min <- NULL
-  cleaned_data$income_weightage <- NULL
-
-  cleaned_data$time <- NULL # perfect collinearity with predictor variable
-```
-
-```{r}
-log_model <- glm(Y ~., data = cleaned_data, family=binomial(link='logit'))
-summary(log_model)
-
-anova(log_model, test = 'Chisq')
-
-car::vif(log_model)
-```
-
-**Running Cross-Validation with k = 10 folds** on the training set with some variables removed
-
-```{r message=FALSE, warning=FALSE}
-set.seed(123)
-split_train_test  <- createDataPartition(cleaned_data$Y, p = .67,
-                                  list = FALSE,
-                                  times = 1)
- 
-train <- cleaned_data[ split_train_test,]
-test  <- cleaned_data[-split_train_test,]
-
-#CV  with 10 folds
-train_control <- trainControl(method = "cv", number = 10)
-
-# train the model on training set
-log_reg <- train(Y ~.,
-               data = train,
-               trControl = train_control,
-               method = "glm",
-               family=binomial(link='logit'))
-
-log_reg
-```
+According to the bias-variance trade-off, all things equal, simpler model should be always preferred because it is less likely to overfit the training data.
 
 ### Predictions
 
 **Model accuracy and Confusion matrix**
+
+**FULL  MODEL**
 ```{r}
-log_reg_prob1 <- predict(log_reg, test, type = 'prob')
+log_reg_prob1 <- predict(log_reg_full, test, type = 'prob')
+log_reg_pred1 <- ifelse(log_reg_prob1[2] > 0.5, 1, 0)
+mean(log_reg_pred1 == test$Y)
+```
+
+**STEP  MODEL**
+```{r}
+log_reg_prob1 <- predict(log_reg_step, test, type = 'prob')
 log_reg_pred1 <- ifelse(log_reg_prob1[2] > 0.5, 1, 0)
 mean(log_reg_pred1 == test$Y)
 ```
@@ -394,11 +452,11 @@ confusionMatrix(
 
 High sensitivity: fewer False Negative errors. Low specificity: Many False Positive.
 
-We can change the threshold 0.5 and set a higher threshold to balance these values.
+We can change the threshold 0.5 to balance these values.
+Focus on sensitivity - more importance for business opportunities
 
 ```{r}
-log_reg_prob1 <- predict(log_reg, test, type = 'prob')
-log_reg_pred1 <- ifelse(log_reg_prob1[2] > 0.55, 1, 0)
+log_reg_pred1 <- ifelse(log_reg_prob1[2] > 0.45, 1, 0)
 
 confusionMatrix(
   as.factor(log_reg_pred1),
@@ -411,17 +469,103 @@ confusionMatrix(
 ```{r}
 test_roc = roc(test$Y ~ log_reg_prob1$"1", plot = TRUE, print.auc = TRUE)
 ```
+## Lasso and Elastic Net
+
+With dummy variables we have 70 variables, some of the coefficients are already shrinked.
+We tried to apply Lasso and Elastic Net to find a reduced set of variables resulting to an optimal performing mode lusing Penalized logistic regression (penalty for having too many variables - regularization).
+
+lasso regression: the coefficients of some less contributive variables are forced to be exactly zero. Only the most significant variables are kept in the final model.
+
+elastic net regression: the combination of ridge and lasso regression. It shrinks some coefficients toward zero (like ridge regression) and set some coefficients to exactly zero.
+
+```{r}
+library(glmnet)
+
+set.seed(123)
+
+x=model.matrix(Y~., data=train)[,-20]
+y=as.numeric(train$Y)
+
+x.test <- model.matrix(Y ~., test)[,-20]
+
+fit.lasso= glmnet(x, y, family = "binomial", alpha = 1) #lambda = NULL
+plot(fit.lasso,xvar="lambda",label=TRUE)
+
+cv.lasso=cv.glmnet(x, y, family = "binomial", alpha = 1)
+plot(cv.lasso)
+cv.lasso$lambda.min
+
+```
+Cross-validation error according to the log of lambda. Vertical line indicates that the log of the optimal value of lambda is around -7, which is the one that minimizes the prediction error (higher accuracy)
+
+The purpose of regularization is to balance accuracy and simplicity. 
+
+```{r}
+lasso_model <- glmnet(x, y, family = "binomial", alpha = 1, lambda = cv.lasso$lambda.min) #lambda = NULL
+# Display regression coefficients
+coef(lasso_model)
+```
+
+
+```{r}
+#Make predictions on the test data
+
+probabilities <- lasso_model %>% predict(x.test)
+predicted.classes <- ifelse(probabilities > 0.5, "1", "0")
+#Model accuracy
+observed.classes <- test$Y
+mean(predicted.classes == observed.classes)
+```
+
+Results eliminating 2 variables do not show improvement in the the model performance on the test data.
+
+**ELASTIC NET**
+
+For elastic net regression, alpha is between 0 and 1. 
+
+We automatically select the best tuning parameters alpha and lambda 
+
+```{r}
+lambda <- 10^seq(-3, 3, length = 100)
+```
+
+
+```{r}
+# Build the model
+set.seed(123)
+elastic <- train(
+  Y ~., data = train, method = "glmnet",
+  family = "binomial",
+  trControl = trainControl("cv", number = 10),
+  tuneLength = 5
+  )
+# Best tuning parameter
+elastic$bestTune
+```
+```{r}
+elastic_model <- glmnet(x, y, family = "binomial", alpha = elastic$bestTune$alpha, lambda = elastic$bestTune$lambda) #lambda = NULL
+# Display regression coefficients
+coef(lasso_model)
+
+#Make predictions on the test data
+
+probabilities <- elastic_model %>% predict(x.test)
+predicted.classes <- ifelse(probabilities > 0.5, "1", "0")
+#Model accuracy
+observed.classes <- test$Y
+mean(predicted.classes == observed.classes)
+```
+
+Elastic Net performs a bit better than Lasso.
+
 
 ## Linear Discriminant Analysis
-
-With the removed variables
 
 ```{r}
 lda.fit=lda(Y~.,data = train)
 lda.fit
 
 plot(lda.fit)
-
 ```
 
 ```{r}
@@ -557,6 +701,10 @@ ggplot(acc, aes(x=k_values)) +
   geom_line(aes(y = accuracy_scores_train), color="blue", size=1.3) 
 
 ```
+
+
+### CLUSTERING
+
 
 <!-- ## one-hot encoding -->
 ```{r}
