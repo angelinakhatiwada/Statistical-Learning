@@ -732,8 +732,307 @@ ggplot(acc, aes(x=k_values)) +
 
 ### CLUSTERING
 
+Classify based on the characterisctics and study variations of Y in the groups
 
-**HIERARCHICAL CLUSTERING**
+```{r}
+cleaned_data_clust <- cleaned_data
+cleaned_data_clust$ID <- seq.int(nrow(cleaned_data_clust))
+cleaned_data_clust<- cleaned_data_clust%>%mutate_if(is.character, as.factor)
+str(cleaned_data_clust)
+```
+
+Calculating Gower distance as we have mixed type data  (cat and num)
+
+A particular distance metric is used and scaled to fall between 0 and 1 for each variable type. Then Linear combination using user-specified weights is calculated to create the final distance matrix.
+
+**Cons**: Sensitive to non-normality and outliers in cont variables. Requires an NxN distance matrix to be calculated, which is computationally intensive
+
+One possible solution for this is to sample your data, cluster the smaller sample, then treat the clustered sample as training data for k Nearest Neighbors and "classify" the rest of the data.
+
+Create a sample of 500 observations. 
+
+```{r}
+set.seed(123) 
+sample_clust <- cleaned_data_clust[sample(nrow(cleaned_data_clust), 500),]
+```
+
+FUNCTIONS
+
+```{r}
+library(cluster)
+library(Rtsne)
+
+gower_distance <- function(datafr) {
+  
+  gower_dist <- daisy(datafr,
+                    metric = "gower",
+                    type = list(logratio = 3))
+# Check attributes to ensure the correct methods are being used
+# (I = interval, N = nominal)
+  return(gower_dist)
+}
+```
+
+Clustering for entire driving scenario (with all the variables)
+```{r}
+set.seed(123) 
+
+#remoxing Y and ID
+
+gower_dist <- gower_distance(sample_clust[,-c(20,23)])
+summary(gower_dist)
+gower_mat <- as.matrix(gower_dist)
+
+```
+
+
+```{r}
+# Output most similar pair
+sample_clust[
+  which(gower_mat == min(gower_mat[gower_mat != min(gower_mat)]),
+        arr.ind = TRUE)[1, ], ]
+```
+
+```{r}
+# Output most dissimilar pair
+sample_clust[
+  which(gower_mat == max(gower_mat[gower_mat != max(gower_mat)]),
+        arr.ind = TRUE)[1, ], ]
+```
+**K-medoids Clustering**
+
+Partitioning around medoids with custom distance matrix
+
+The k-medoids problem is a clustering problem similar to k-means. Both the k-means and k-medoids algorithms are partitional (breaking the dataset up into groups) and attempt to minimize the distance between points labeled to be in a cluster and a point designated as the center of that cluster. In contrast to the k-means algorithm, k-medoids chooses actual data points as centers (medoids or exemplars), and thereby allows for greater interpretability of the cluster centers than in k-means. Furthermore, k-medoids can be used with arbitrary dissimilarity measures, whereas k-means generally requires Euclidean distance for efficient solutions. Because k-medoids minimizes a sum of pairwise dissimilarities instead of a sum of squared Euclidean distances, it is more robust to noise and outliers than k-means.
+
+Number k of clusters assumed known a priori. The "goodness" of the given value of k can be assessed with methods such as the silhouette method.
+
+Has the added benefit of having an observation serve as the exemplar for each cluster
+
+Selecting the number of clusters using silhouette width, an internal validation metric which is an aggregated measure of how similar an observation is to its own cluster compared its closest neighboring cluster. The metric can range from -1 to 1, where higher values are better.
+
+```{r}
+library(Rtsne)
+
+# Calculate silhouette width for many k using PAM
+sil_width <- c(NA)
+for(i in 2:10){
+  
+  pam_fit <- pam(gower_dist,
+                 diss = TRUE,
+                 k = i)
+  
+  sil_width[i] <- pam_fit$silinfo$avg.width
+  
+}
+# Plot sihouette width (higher is better)
+plot(1:10, sil_width,
+     xlab = "Number of clusters",
+     ylab = "Silhouette Width")
+lines(1:10, sil_width)
+```
+2 clusters show the best result
+
+Interpret the clusters by running summary on each cluster. 
+In cluster 1 : No Urgent Place, Friends, Sunny, 80_temp, Coffee House, Male, 21y, Single, 0_has_children
+In cluster 2: Alone, Sunny, Married partner, Female, 
+
+```{r}
+pam_fit <- pam(gower_dist, diss = TRUE, k = 2)
+pam_results <- sample_clust %>%
+  dplyr::select(-ID) %>%
+  mutate(cluster = pam_fit$clustering) %>%
+  group_by(cluster) %>%
+  do(the_summary = summary(.))
+pam_results$the_summary 
+```
+
+```{r}
+sample_clust[pam_fit$medoids, ]
+```
+One way to visualize many variables in a lower dimensional space is with t-distributed stochastic neighborhood embedding, or t-SNE. This method is a (dimensionality reduction technique that tries to preserve local structure so as to make clusters visible in a 2D or 3D visualization). it is able to handle a custom distance metric. 
+
+Plot shows that clusters are overlapping. 
+
+```{r}
+tsne_obj <- Rtsne(gower_dist, is_distance = TRUE)
+tsne_data <- tsne_obj$Y %>%
+  data.frame() %>%
+  setNames(c("X", "Y")) %>%
+  mutate(cluster = factor(pam_fit$clustering),
+         name = sample_clust$ID)
+ggplot(aes(x = X, y = Y), data = tsne_data) +
+  geom_point(aes(color = cluster))
+```
+Clusters are overlapping
+
+**Agglomerative clustering**
+
+
+```{r}
+aggl.clust.c <- hclust(gower_dist, method = "complete")
+plot(aggl.clust.c,
+     main = "Agglomerative, complete linkages")
+
+aggl.clust.c <- hclust(gower_dist, method = "average")
+plot(aggl.clust.c,
+     main = "Agglomerative, average linkages")
+
+aggl.clust.c <- hclust(gower_dist, method = "single")
+plot(aggl.clust.c,
+     main = "Agglomerative, single linkages")
+
+aggl.clust.w <- hclust(gower_dist, method = "ward.D2")
+plot(aggl.clust.w,
+     main = "Agglomerative, ward linkages")
+
+
+
+```
+
+```{r}
+# hierarchical clustering using Ward linkage
+
+library("reshape2")
+library("purrr")
+library("dendextend")
+
+dendro <- as.dendrogram(aggl.clust.w)
+dendro.col <- dendro %>%
+  set("branches_k_color", k = 2, value =   c( "gold3", "darkcyan")) %>%
+  set("branches_lwd", 0.6) %>%
+  set("labels_colors", 
+      value = c("darkslategray")) %>% 
+  set("labels_cex", 0.5)
+ggd1 <- as.ggdend(dendro.col)
+ggplot(ggd1, theme = theme_minimal()) +
+  labs(x = "Num. observations", y = "Height", title = "Dendrogram, k = 2")
+
+groups <- cutree(aggl.clust.w, k=2) # cut tree into 5 clusters
+```
+
+```{r}
+clusplot(sample_clust, groups, color=TRUE, shade=TRUE,
+         labels=2, lines=0, main= 'Driving scenario clusters')
+```
+Questions:
+1) How to compare the result with the true labels - Rand index
+2) Is the silhouette metrics optimal for evaluation?
+3) Should we do a PCA - 18% otf variance explained is very small, more dimensions 
+4) explain variabilty of Y within the groups
+5) select the number of k in hierarchical clustering to min the dist within the cluster
+
+## Clustering evaluation - Rand index 
+
+## Another startegy - groups based on personal characteristics 
+
+```{r}
+sample_clust_pers <- sample_clust[,-c(1:5, 12:19, 22)]
+str(sample_clust_pers)
+
+set.seed(123) 
+
+# Remove Y and ID before clustering
+gower_dist <- daisy(sample_clust_pers[,-c(7,9)],
+                    metric = "gower",
+                    type = list(logratio = 3))
+# Check attributes to ensure the correct methods are being used
+# (I = interval, N = nominal)
+
+summary(gower_dist)
+
+# Calculate silhouette width for many k using PAM
+sil_width <- c(NA)
+for(i in 2:10){
+  
+  pam_fit <- pam(gower_dist,
+                 diss = TRUE,
+                 k = i)
+  
+  sil_width[i] <- pam_fit$silinfo$avg.width
+  
+}
+# Plot sihouette width (higher is better)
+plot(1:10, sil_width,
+     xlab = "Number of clusters",
+     ylab = "Silhouette Width")
+lines(1:10, sil_width)
+
+```
+
+```{r}
+pam_fit <- pam(gower_dist, diss = TRUE, k = 2)
+pam_results <- sample_clust_pers %>%
+  dplyr::select(-ID) %>%
+  mutate(cluster = pam_fit$clustering) %>%
+  group_by(cluster) %>%
+  do(the_summary = summary(.))
+#pam_results$the_summary 
+tsne_obj <- Rtsne(gower_dist, is_distance = TRUE)
+tsne_data <- tsne_obj$Y %>%
+  data.frame() %>%
+  setNames(c("X", "Y")) %>%
+  mutate(cluster = factor(pam_fit$clustering),
+         name = sample_clust_pers$ID)
+ggplot(aes(x = X, y = Y), data = tsne_data) +
+  geom_point(aes(color = cluster))
+```
+How much variability explained by this 2 components?
+
+Group by characteristics of coupon only
+
+```{r}
+sample_clust_coup <- sample_clust[,-c(1:4, 6:16, 19, 21)]
+str(sample_clust_coup)
+
+set.seed(123) 
+
+# Remove Y and ID before clustering
+gower_dist <- daisy(sample_clust_coup[,-c(3,5)],
+                    metric = "gower",
+                    type = list(logratio = 3))
+# Check attributes to ensure the correct methods are being used
+# (I = interval, N = nominal)
+
+summary(gower_dist)
+
+# Calculate silhouette width for many k using PAM
+sil_width <- c(NA)
+for(i in 2:30){
+  
+  pam_fit <- pam(gower_dist,
+                 diss = TRUE,
+                 k = i)
+  
+  sil_width[i] <- pam_fit$silinfo$avg.width
+  
+}
+# Plot sihouette width (higher is better)
+plot(1:30, sil_width,
+     xlab = "Number of clusters",
+     ylab = "Silhouette Width")
+lines(1:30, sil_width)
+
+pam_fit <- pam(gower_dist, diss = TRUE, k = 18)
+pam_results <- sample_clust_coup %>%
+  dplyr::select(-ID) %>%
+  mutate(cluster = pam_fit$clustering) %>%
+  group_by(cluster) %>%
+  do(the_summary = summary(.))
+pam_results$the_summary 
+
+```
+```{r}
+tsne_obj <- Rtsne(gower_dist, is_distance = TRUE)
+tsne_data <- tsne_obj$Y %>%
+  data.frame() %>%
+  setNames(c("X", "Y")) %>%
+  mutate(cluster = factor(pam_fit$clustering),
+         name = sample_clust_coup$ID)
+ggplot(aes(x = X, y = Y), data = tsne_data) +
+  geom_point(aes(color = cluster))
+```
+
 
 <!-- ## one-hot encoding -->
 ```{r}
@@ -741,7 +1040,7 @@ ggplot(acc, aes(x=k_values)) +
   # 
   # # library(caret)
   # # dummy <- dummyVars(" ~ .", data=cleaned_data)
-  # # coupon_data_encoded <- data.frame(predict(dummy, newdata = cleaned_data)) 
+  # # coupon_data_encoded <- data.frame(predict(dummy, newdata = cl eaned_data)) 
   # 
   # encoded <- fastDummies::dummy_cols(cleaned_data, remove_first_dummy = TRUE)
   # 
