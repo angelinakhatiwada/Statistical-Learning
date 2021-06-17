@@ -112,7 +112,9 @@ This data was collected via a survey on Amazon Mechanical Turk. The survey descr
 
 ```
 
-**3) Creating New Variables - occupation class**
+**3) Creating New Variables** 
+- occupation class
+- Expiration weightage
 ```{r message=FALSE, warning=FALSE, include=FALSE}
 
   coupon_data[] <- lapply(coupon_data, as.character)
@@ -210,7 +212,10 @@ knitr::kable(occup_class, format = "html")
   # coupon_data_final %>% map(table)
   # colMeans(is.na(cleaned_data))*100
 ```
-\
+```{r include=FALSE}
+
+```
+
 ## Plotting data columns
 
 ```{r echo=FALSE, message=FALSE, warning=FALSE}
@@ -345,11 +350,11 @@ str(cleaned_data)
 ```{r}
 
 full_log_model <- glm(Y ~., data = cleaned_data, family=binomial(link='logit'))
-# summary(full_log_model)
+summary(full_log_model)
 ```
 
 **Chi-square test** to check the overall effect of variables on the dependent variable
-```{r}
+```{r include=FALSE}
 anova(full_log_model, test = 'Chisq')
 ```
 Insignificant coefficients (with p-value > 0.05) according to chi2 check are:
@@ -500,11 +505,11 @@ confusionMatrix(
 
 High sensitivity: fewer False Negative errors. Low specificity: Many False Positive.
 
-We can change the threshold from 0.5 to 0.55 inorder to balance these values.
+We can change the threshold from 0.5 to 0.45 inorder to balance these values.
 Focus on sensitivity - more importance for business opportunities
 
 ```{r echo=FALSE}
-log_reg_pred1 <- ifelse(log_reg_prob1[2] > 0.55, 1, 0)
+log_reg_pred1 <- ifelse(log_reg_prob1[2] > 0.45, 1, 0)
 
 confusionMatrix(
   as.factor(log_reg_pred1),
@@ -763,7 +768,10 @@ cleaned_data_clust$ID <- seq.int(nrow(cleaned_data_clust))
 cleaned_data_clust<- cleaned_data_clust%>%mutate_if(is.character, as.factor)
 str(cleaned_data_clust)
 ```
-\
+```{r include=FALSE}
+
+```
+
 #### Gower distance
 Calculating Gower distance as we have mixed type data  (cat and num)
 
@@ -783,7 +791,6 @@ sample_clust <- cleaned_data_clust[sample(nrow(cleaned_data_clust), 500),]
 ```{r}
 library(cluster)
 library(Rtsne)
-
 gower_distance <- function(datafr) {
   gower_dist <- daisy(datafr,
                     metric = "gower",
@@ -836,18 +843,15 @@ Selecting the number of clusters using silhouette width, an internal validation 
 
 ```{r}
 library(Rtsne)
-
 # Calculate silhouette width for many k using PAM
 sil_width <- c(NA)
 for(i in 2:10){
-  
   pam_fit <- pam(gower_dist,
                  diss = TRUE,
                  k = i)
-  
   sil_width[i] <- pam_fit$silinfo$avg.width
-  
 }
+
 # Plot sihouette width (higher is better)
 plot(1:10, sil_width,
      xlab = "Number of clusters",
@@ -878,7 +882,7 @@ One way to visualize many variables in a lower dimensional space is with t-distr
 
 Plot shows that clusters are overlapping. 
 
-```{r echo=FALSE}
+```{r}
 tsne_obj <- Rtsne(gower_dist, is_distance = TRUE)
 tsne_data <- tsne_obj$Y %>%
   data.frame() %>%
@@ -894,7 +898,7 @@ Clusters are overlapping
 ## Agglomerative clustering
 
 
-```{r include=FALSE}
+```{r}
 # aggl.clust.c <- hclust(gower_dist, method = "complete")
 # plot(aggl.clust.c,
 #      main = "Agglomerative, complete linkages")
@@ -1025,5 +1029,65 @@ tsne_data <- tsne_obj$Y %>%
          name = sample_clust_pers$ID)
 ggplot(aes(x = X, y = Y), data = tsne_data) +
   geom_point(aes(color = cluster))
+```
+
+## Group by characteristics of coupon only
+
+```{r echo=FALSE}
+sample_clust_coup <- sample_clust[,-c(1:4, 6:16, 19, 21)]
+str(sample_clust_coup)
+```
+
+```{r echo=FALSE}
+set.seed(123) 
+
+# Remove Y and ID before clustering
+gower_dist <- daisy(sample_clust_coup[,-c(3,5)],
+                    metric = "gower",
+                    type = list(logratio = 3))
+# Check attributes to ensure the correct methods are being used
+# (I = interval, N = nominal)
+
+# summary(gower_dist)
+
+# Calculate silhouette width for many k using PAM
+sil_width <- c(NA)
+for(i in 2:30){
+  
+  pam_fit <- pam(gower_dist,
+                 diss = TRUE,
+                 k = i)
+  sil_width[i] <- pam_fit$silinfo$avg.width
+}
+# Plot sihouette width (higher is better)
+plot(1:30, sil_width,
+     xlab = "Number of clusters",
+     ylab = "Silhouette Width")
+lines(1:30, sil_width)
+```
+
+
+```{r include=FALSE}
+pam_fit <- pam(gower_dist, diss = TRUE, k = 18)
+pam_results <- sample_clust_coup %>%
+  dplyr::select(-ID) %>%
+  mutate(cluster = pam_fit$clustering) %>%
+  group_by(cluster) %>%
+  do(the_summary = summary(.))
+```
+
+```{r echo=FALSE}
+tsne_obj <- Rtsne(gower_dist, is_distance = TRUE)
+tsne_data <- tsne_obj$Y %>%
+  data.frame() %>%
+  setNames(c("X", "Y")) %>%
+  mutate(cluster = factor(pam_fit$clustering),
+         name = sample_clust_coup$ID)
+ggplot(aes(x = X, y = Y), data = tsne_data) +
+  geom_point(aes(color = cluster))
+```
+
+```{r}
+pam_results$the_summary 
 ```
 
