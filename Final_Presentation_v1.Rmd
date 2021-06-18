@@ -93,6 +93,7 @@ This data was collected via a survey on Amazon Mechanical Turk. The survey descr
   which(apply(coupon_data, 2, function(x) length(unique(x)))==1)
   coupon_data$toCoupon_GEQ5min <- NULL # removing column with single value
 ```
+
 ```{r include=FALSE}
 # coupon_accepted <- as.factor(coupon_data$Y)
 # 
@@ -114,7 +115,7 @@ This data was collected via a survey on Amazon Mechanical Turk. The survey descr
 
 **3) Creating New Variables** 
 - occupation class
-- Expiration weightage
+- Expiration weightage (numeric, scaled)
 ```{r message=FALSE, warning=FALSE, include=FALSE}
 
   coupon_data[] <- lapply(coupon_data, as.character)
@@ -163,7 +164,7 @@ This data was collected via a survey on Amazon Mechanical Turk. The survey descr
                                          ,"Installation Maintenance & Repair","Transportation & Material Moving"))]  <- "Craft and related trades workers"
   coupon_data$occupation_class[which(coupon_data$occupation %in% 
                                        c("Community & Social Services","Construction & Extraction","Healthcare Support"
-                                         ,"Life Physical Social Science"))] <- "Technicians & professionals"
+                                         ,"Life Physical Social Science"))] <- "Technicians & prof"
   coupon_data$occupation_class[which(coupon_data$occupation %in% 
                                        c("Personal Care & Service","Protective Service","Sales & Related"))] <- "Service and sales"
   coupon_data$occupation_class[which(coupon_data$occupation %in% 
@@ -235,8 +236,8 @@ p3 <- ggplot(cleaned_data, aes(x=weather, fill=Y)) +
   geom_bar(stat="count")
 
 #time
-p4 <- ggplot(cleaned_data, aes(x=time, fill=Y)) +
-  geom_bar(stat="count")
+#p4 <- ggplot(cleaned_data, aes(x=time, fill=Y)) +
+  #geom_bar(stat="count")
 
 #gender
 p5 <- ggplot(cleaned_data, aes(x=gender, fill=Y)) +
@@ -322,9 +323,11 @@ grid.arrange(p9, p10, p11, p12, p13, p14, ncol=2)
 
 # Modeling
 
-Droped the variable 'direction_opp' that is perfectly correlated with the varible 'direction_same'. 'occupation' will be replaced by 'occupation_class' in the model.  
+- Droped the variable 'direction_opp' that is perfectly correlated with the varible 'direction_same'. 
+- 'occupation' will be replaced by 'occupation_class' in the model.  
+- 'expiration' replaced by numeric variable.
 
-### Datast Summary
+### Dataset Summary
 ```{r echo=FALSE, message=FALSE, warning=FALSE}
 # cleaned_data$Y <- as.factor(cleaned_data$Y)
 cleaned_data$has_children <- as.factor(cleaned_data$has_children)
@@ -345,16 +348,28 @@ str(cleaned_data)
 
 ## Logistic Regression
 
+The multiple logistic regression is used to predict the probability of class membership based on multiple predictor variables.
+
 ### Run model with all parameters on dataset without splitting
 
-```{r}
+- **The most significant variables** (highest z-score and lowest p-value): destination, weather, coupon, CoffeHouse, direction, expiration_weightage
+- Insignificant variables (p-value > 0.05): has_children
 
+The coefficient estimate of the variable destinationNo Urgent Place is b = 0.72: means that an No UrgentPlace is associated with increase in the probability of accepting coupon more than baseline dummy destinationWork. 
+
+Being Male, for example, increases the probability of accepting coupon more than being Female. Being age50plus decreases the probability of accepting coupon more than being 21-26.
+
+If we have at least one significant dummy, we can not exclude the variable.
+
+```{r}
+set.seed(123)
 full_log_model <- glm(Y ~., data = cleaned_data, family=binomial(link='logit'))
 summary(full_log_model)
 ```
+An **odds ratio** measures the association between a x and y. It represents the ratio of the odds that an event will occur given the presence of the predictor x, compared to the odds of the event occurring in the absence of that predictor. The associated beta coefficient (b) in the logistic regression function corresponds to the log of the odds ratio for that predictor. If the odds ratio is 0.5, then the odds that the event = 1 are 0.5 higher when the predictor x is present (x = 1) versus x is absent (x = 0).
 
 **Chi-square test** to check the overall effect of variables on the dependent variable
-```{r include=FALSE}
+```{r echo=FALSE}
 anova(full_log_model, test = 'Chisq')
 ```
 Insignificant coefficients (with p-value > 0.05) according to chi2 check are:
@@ -367,7 +382,10 @@ Insignificant coefficients (with p-value > 0.05) according to chi2 check are:
 ```{r}
 car::vif(full_log_model)
 ```
-Porblem of multicollinearity solved. 
+There is no problem of mulricollinearity.
+
+Keeping **insignificant variables** in the model may contribute to overfitting. 
+Eliminated **manually, using stepwise regression and penalized regression methods**.
 
 ### Stepwise Selection
 
@@ -391,7 +409,7 @@ forward <- stepAIC(full_log_model, direction = 'forward', trace = FALSE)
 #summary(step_model)
 forward$anova
 ```
-**With forward direction we get the same result as we had with a full model, forward begins with a Null model(intercept only model)**
+With forward direction we get the same result as we had with a complete model, forward begins with a Null model (intercept only model)
 \
 
 **Backward direction**
@@ -403,8 +421,9 @@ backward$anova
 ```
 The backward procedure eliminated exactly the same variables as the “both” procedure.
 
-- Different criteria can be assigned to the stepAIC() function for stepwise selection. The default is AIC, which is performed by assigning the argument k to 2 (default).
-- Tried running bestglm, but there is a hard-coded constraint in bestglm (15 predictors means there are 2^15 = 32768 candidate models). In our case we have around 70 variables counting dummies.
+- Different criteria can be assigned to the stepAIC() function for stepwise selection. The default is AIC, which is performed by assigning the argument k to 2.
+
+- We also tried running bestglm, but there is a hard-coded constraint in bestglm (15 predictors means there are 2^15 = 32768 candidate models). In our case we have around 70 variables counting dummies.
 
 ```{r eval=FALSE, include=FALSE}
 # library(leaps)
@@ -433,11 +452,11 @@ The backward procedure eliminated exactly the same variables as the “both” p
 # bestglm(coupon_data_encoded, IC ='BIC', family = binomial)
 ```
 
-### Running 10 fold Cross-Validation on Full and Stepwise model using training data
+### Running 10 fold Cross-Validation on Complete and Stepwise model using training data
 
-Initially split in train and test sets to avoid overfitting\
+**Initially splitting data into train (0.67) and test sets to avoid overfitting**\
 
-**1) Model on full dataset**
+**1) Model on training set with all variables**
 ```{r echo=FALSE}
 set.seed(123)
 split_train_test  <- createDataPartition(cleaned_data$Y, p = .67,list = FALSE, times = 1)
@@ -455,9 +474,10 @@ log_reg_full <- train(Y ~.,
                family=binomial(link='logit')) 
 
 log_reg_full
+#summary(log_reg_full)
 ```
 
-**2) Model by dropping columns suggested by stepwise model**
+**2) Model on training set by dropping columns suggested by stepwise model (CarryAway, RestaurantLessThan20) **
 ```{r echo=FALSE}
 #CV  with 10 folds on step model
 train_control <- trainControl(method = "cv", number = 10)
@@ -469,20 +489,19 @@ log_reg_step <- train(Y ~.,
                family=binomial(link='logit'))
 
 log_reg_step
+#summary(log_reg_step)
 ```
-**Full model AIC: 10138** \
+**Full model AIC: 10139** \
 **Stepwise model AIC: 10134 **
 
-According to the bias-variance trade-off, all things equal, simpler model should be always preferred because it is less likely to overfit the training data.
+According to the bias-variance trade-off, all things equal, simpler model should be always preferred because it is less likely to overfit the training data (less variance).
 
-
-
-## Logistic model Predictions
+## Logistic model Predictions on Test set
 
 <!-- **Model accuracy and Confusion matrix** -->
 
-**Logistic Model Accuracy**
-```{r echo=FALSE}
+**Logistic Complete Model Accuracy**
+```{r echo=TRUE}
 log_reg_prob1 <- predict(log_reg_full, test, type = 'prob')
 log_reg_pred1 <- ifelse(log_reg_prob1[2] > 0.5, 1, 0)
 mean(log_reg_pred1 == test$Y)
@@ -502,11 +521,14 @@ confusionMatrix(
   positive = "1" 
 )
 ```
+**High sensitivity**: fewer False Negative errors, which are severe types of error for us.\
+Low specificity: Many False Positive.
 
-High sensitivity: fewer False Negative errors. Low specificity: Many False Positive.
+Sensitivity = TP/TP+FN\
+The ability of a test to correctly identify people with a coupon\
+Speficity = TN/TP+FN\
 
-We can change the threshold from 0.5 to 0.45 inorder to balance these values.
-Focus on sensitivity - more importance for business opportunities
+We can change the threshold from 0.5 to 0.45 in order to decrease FN. Focus on sensitivity which is more important for business opportunities.
 
 ```{r echo=FALSE}
 log_reg_pred1 <- ifelse(log_reg_prob1[2] > 0.45, 1, 0)
@@ -523,17 +545,14 @@ confusionMatrix(
 test_roc = roc(test$Y ~ log_reg_prob1$"1", plot = TRUE, print.auc = TRUE)
 ```
 
-```{r eval=FALSE, include=FALSE}
-
-```
-## Lasso and Elastic Net
+## Penalised models: Lasso and Elastic Net
 
 With dummy variables we have 70 variables, some of the coefficients are already shrinked.
-We tried to apply Lasso and Elastic Net to find a reduced set of variables resulting to an optimal performing mode lusing Penalized logistic regression (penalty for having too many variables - regularization).
+We tried to apply Lasso and Elastic Net to find a reduced set of variables resulting to an optimal performing mode (penalty for having too many variables - regularization).
 
-lasso regression: the coefficients of some less contributive variables are forced to be exactly zero. Only the most significant variables are kept in the final model.
+Lasso regression: the coefficients of some less contributive variables are zero. Only the most significant variables are kept in the final model.
 
-elastic net regression: the combination of ridge and lasso regression. It shrinks some coefficients toward zero (like ridge regression) and set some coefficients to exactly zero.
+Elastic net regression: the combination of ridge and lasso regression. It shrinks some coefficients toward zero  and set some coefficients to exactly zero.
 
 ```{r}
 set.seed(123)
@@ -549,19 +568,18 @@ plot(fit.lasso,xvar="lambda",label=TRUE)
 
 ```{r echo=FALSE}
 cv.lasso=cv.glmnet(x, y, family = "binomial", alpha = 1)
-# cv.lasso$lambda.min
 plot(cv.lasso)
 ```
-Cross-validation error according to the log of lambda. Vertical line indicates that the log of the optimal value of lambda is around -7, which is the one that minimizes the prediction error (higher accuracy)
 
-The purpose of regularization is to balance accuracy and simplicity. 
+The log of the optimal value of lambda is around -6, which is the one that minimizes the prediction error. **The purpose of regularization is to balance accuracy and simplicity**. 
 
 ```{r}
-lasso_model <- glmnet(x, y, family = "binomial", alpha = 1, lambda = cv.lasso$lambda.min) #lambda = NULL
+lasso_model <- glmnet(x, y, family = "binomial", alpha = 1, lambda = cv.lasso$lambda.min) 
 # Display regression coefficients
+print('The value of the optimal lambda:')
+cv.lasso$lambda.min
 coef(lasso_model)
 ```
-
 
 ```{r}
 #Make predictions on the test data
@@ -572,7 +590,7 @@ observed.classes <- test$Y
 mean(predicted.classes == observed.classes)
 ```
 
-Results eliminating 2 variables do not show improvement in the the model performance on the test data.
+Results do not show any improvement in the the model performance on the test data.
 
 **ELASTIC NET**
 
@@ -597,10 +615,12 @@ elastic <- train(
 # Best tuning parameter
 elastic$bestTune
 ```
+
+**Training model with the best parameters and predicting on the test set**
 ```{r}
 elastic_model <- glmnet(x, y, family = "binomial", alpha = elastic$bestTune$alpha, lambda = elastic$bestTune$lambda) #lambda = NULL
 # Display regression coefficients
-coef(lasso_model)
+#coef(lasso_model)
 
 #Make predictions on the test data
 
@@ -612,7 +632,6 @@ mean(predicted.classes == observed.classes)
 ```
 
 Elastic Net performs a bit better than Lasso.
-
 
 ## Linear Discriminant Analysis
 
@@ -628,10 +647,17 @@ lda.pred=predict(lda.fit,test)$class
 table(lda.pred,test$Y)
 mean(lda.pred==test$Y)
 ```
-LDA predicts more False Positives as well
+
+LDA predicts more False Positives as well, accuracy is similar to Logistic Regression (Robust result).
+
+**Improving the accuracy**:
+- Remove potential outliers (Robust Logistic Regression, remove outliers within categorical variables and combinations of categorical variables)
+- Random forest and boosting models to capture non-linearities and interactions between the variables
+- Another option to apply Generalised Additive Models.
 
 
 # RANDOM FOREST
+
 
 ### Dataset Summary
 ```{r include=FALSE}
@@ -759,8 +785,6 @@ pred_boost = predict(rf_boost, test_boost[,-y_col], type = 'response')
 
 # CLUSTERING
 
-Classify based on the characterisctics and study variations of Y in the groups
-
 ### Dataset summary
 ```{r echo=FALSE}
 cleaned_data_clust <- cleaned_data
@@ -768,24 +792,18 @@ cleaned_data_clust$ID <- seq.int(nrow(cleaned_data_clust))
 cleaned_data_clust<- cleaned_data_clust%>%mutate_if(is.character, as.factor)
 str(cleaned_data_clust)
 ```
-```{r include=FALSE}
 
-```
+#### Gower distance 
 
-#### Gower distance
-Calculating Gower distance as we have mixed type data  (cat and num)
+**(for mixed type data - categorical and numerical)**
 
-A particular distance metric is used and scaled to fall between 0 and 1 for each variable type. Then Linear combination using user-specified weights is calculated to create the final distance matrix.
+**Cons**: Requires an NxN distance matrix to be calculated, which is computationally intensive. One possible solution for this is to **sample data**, cluster the smaller sample, then treat the clustered sample as training data for k Nearest Neighbors and "classify" the rest of the data.
 
-**Cons**: Sensitive to non-normality and outliers in cont variables. Requires an NxN distance matrix to be calculated, which is computationally intensive
-
-One possible solution for this is to sample your data, cluster the smaller sample, then treat the clustered sample as training data for k Nearest Neighbors and "classify" the rest of the data.
-
-Create a sample of 500 observations. 
+We create a sample of 1000 observations. 
 
 ```{r echo=FALSE}
 set.seed(123) 
-sample_clust <- cleaned_data_clust[sample(nrow(cleaned_data_clust), 500),]
+sample_clust <- cleaned_data_clust[sample(nrow(cleaned_data_clust), 1000),]
 ```
 
 ```{r}
@@ -795,27 +813,28 @@ gower_distance <- function(datafr) {
   gower_dist <- daisy(datafr,
                     metric = "gower",
                     type = list(logratio = 3))
-# Check attributes to ensure the correct methods are being used
-# (I = interval, N = nominal)
   return(gower_dist)
 }
 ```
 
-Clustering for entire driving scenario (with all the variables)
-```{r include=FALSE}
+**Clustering for entire driving scenario (with all the variables)**
+Gower distance
+```{r echo=FALSE}
 set.seed(123) 
 
 #remoxing Y and ID
-
 gower_dist <- gower_distance(sample_clust[,-c(20,23)])
 summary(gower_dist)
-gower_mat <- as.matrix(gower_dist)
 
 ```
+
+Gower distance  = 0 minimum. 1 - maximum distance.\
+We have more dissimilar observaions in the dataset.
 
 
 ```{r}
 # Output most similar pair
+gower_mat <- as.matrix(gower_dist)
 sample_clust[
   which(gower_mat == min(gower_mat[gower_mat != min(gower_mat)]),
         arr.ind = TRUE)[1, ], ]
@@ -833,13 +852,11 @@ sample_clust[
 
 Partitioning around medoids with custom distance matrix
 
-The k-medoids problem is a clustering problem similar to k-means. Both the k-means and k-medoids algorithms are partitional (breaking the dataset up into groups) and attempt to minimize the distance between points labeled to be in a cluster and a point designated as the center of that cluster. In contrast to the k-means algorithm, k-medoids chooses actual data points as centers (medoids or exemplars), and thereby allows for greater interpretability of the cluster centers than in k-means. Furthermore, k-medoids can be used with arbitrary dissimilarity measures, whereas k-means generally requires Euclidean distance for efficient solutions. Because k-medoids minimizes a sum of pairwise dissimilarities instead of a sum of squared Euclidean distances, it is more robust to noise and outliers than k-means.
+The k-medoids problem is a clustering problem similar to k-means.In contrast to the k-means algorithm, k-medoids chooses **actual data points as centers (medoids or exemplars)**, and thereby allows for **greater interpretability of the cluster centers** than in k-means.
 
-Number k of clusters assumed known a priori. The "goodness" of the given value of k can be assessed with methods such as the silhouette method.
+k-medoids can be used with arbitrary dissimilarity measures, whereas k-means generally requires Euclidean distance for efficient solutions. Because **k-medoids minimizes a sum of pairwise dissimilarities** instead of a sum of squared Euclidean distances, it is **more robust to noise and outliers than k-means**.
 
-Has the added benefit of having an observation serve as the exemplar for each cluster
-
-Selecting the number of clusters using silhouette width, an internal validation metric which is an aggregated measure of how similar an observation is to its own cluster compared its closest neighboring cluster. The metric can range from -1 to 1, where higher values are better.
+Selecting the number of clusters k using **silhouette width**, an internal validation metric which is an aggregated measure of how similar an observation is to its own cluster compared its closest neighboring cluster. The metric can range from -1 to 1, where higher values are better.
 
 ```{r}
 library(Rtsne)
@@ -859,28 +876,33 @@ plot(1:10, sil_width,
 lines(1:10, sil_width)
 ```
 \
-2 clusters show the best result
+**Interpret the clusters by running summary on each cluster:**
 
-Interpret the clusters by running summary on each cluster. 
-In cluster 1 : No Urgent Place, Friends, Sunny, 80_temp, Coffee House, Male, 21y, Single, 0_has_children
-In cluster 2: Alone, Sunny, Married partner, Female, 
+In cluster 1 (430): higher frequency for Alone, Male, 21, Single, no_children, Some college - no degree/Bachelors degree, lower income, Student\     
+
+In cluster 2 (570): higher frequency for No Urgent Place, Friends/Alone, Female, 50plus, Married_Partner, has_children, Bachelors degree/Graduate, higher income,Restaurant20To50, toCoupon_GEQ15min, Professionals
+
+Other characteristics are overlapping for both the clusters, so we can explore if only the personal characteriscts and not the driving scenario lead to the cluster separation.
+
+Distribution of Y is the same in the clusters (58% accepted in the first group and 55% in the second).
+
 
 ```{r}
+set.seed(123) 
 pam_fit <- pam(gower_dist, diss = TRUE, k = 2)
 pam_results <- sample_clust %>%
   dplyr::select(-ID) %>%
   mutate(cluster = pam_fit$clustering) %>%
   group_by(cluster) %>%
   do(the_summary = summary(.))
-# pam_results$the_summary 
+#pam_results$the_summary 
 ```
+
 
 ```{r}
 sample_clust[pam_fit$medoids, ]
 ```
-One way to visualize many variables in a lower dimensional space is with t-distributed stochastic neighborhood embedding, or t-SNE. This method is a (dimensionality reduction technique that tries to preserve local structure so as to make clusters visible in a 2D or 3D visualization). it is able to handle a custom distance metric. 
-
-Plot shows that clusters are overlapping. 
+One way to visualize many variables in a lower dimensional space is with t-distributed stochastic neighborhood embedding, or t-SNE. A dimensionality reduction technique that tries to preserve local structure so as to make clusters visible in a 2D or 3D visualization.
 
 ```{r}
 tsne_obj <- Rtsne(gower_dist, is_distance = TRUE)
@@ -892,16 +914,15 @@ tsne_data <- tsne_obj$Y %>%
 ggplot(aes(x = X, y = Y), data = tsne_data) +
   geom_point(aes(color = cluster))
 ```
-Clusters are overlapping
 
+**Clusters are overlapping**. Blue points are closer to blue cluster medoid for the metrics, however, it's impossible to show it in a 2D space due to the fact that only 18% of variance of the data explained after dim reduction.
 
 ## Agglomerative clustering
 
-
 ```{r}
-# aggl.clust.c <- hclust(gower_dist, method = "complete")
-# plot(aggl.clust.c,
-#      main = "Agglomerative, complete linkages")
+aggl.clust.c <- hclust(gower_dist, method = "complete")
+  plot(aggl.clust.c,
+      main = "Agglomerative, complete linkages")
 # 
 # aggl.clust.c <- hclust(gower_dist, method = "average")
 # plot(aggl.clust.c,
@@ -914,8 +935,6 @@ Clusters are overlapping
 aggl.clust.w <- hclust(gower_dist, method = "ward.D2")
 plot(aggl.clust.w,
      main = "Agglomerative, ward linkages")
-
-
 
 ```
 
@@ -942,33 +961,23 @@ clusplot(sample_clust, groups, color=TRUE, shade=TRUE,
 ```
 \
 \
-Questions:
-1) How to compare the result with the true labels - Rand index
-2) Is the silhouette metrics optimal for evaluation?
-3) Should we do a PCA - 18% otf variance explained is very small, more dimensions 
-4) explain variabilty of Y within the groups
-5) select the number of k in hierarchical clustering to min the dist within the cluster
 
 ## Clustering evaluation - Rand index 
-Rand Index looks at similarity between any two clustering methods.
-Rand function calculates the Rand Index for two different clustering outcomes. 
+
+Rand Index looks at similarity between any two clustering methods. 
 The Rand Index gives a value between 0 and 1,where 1 means the two clustering outcomes match identically
 ```{r echo=FALSE}
-groups_n <- cutree(aggl.clust.w, k=1:2) # cut tree into 5 clusters
-
-# groups[,2]
-
-# clusplot(sample_clust, groups, color=TRUE, shade=TRUE,
-#          labels=2, lines=0, main= 'Driving scenario clusters')
 
 library(fossil)
-# Rand Index looks at similarity between any two clustering methods.
-rand.index(groups_n[,1], groups_n[,2]) 
-# This function calculates the Rand Index for two different clustering outcomes. 
-# The Rand Index gives a value between 0 and 1, 
-# where 1 means the two clustering outcomes match identicaly.
-```
+# Rand Index between k-medoids and agglomerative clustering.
+rand.index(pam_fit$clustering, groups) 
 
+# Rand Index between k-medoids and true labels
+rand.index(pam_fit$clustering, as.integer(sample_clust$Y))
+
+# Rand Index between agglomerative clustering and true labels
+rand.index(groups, as.integer(sample_clust$Y))
+```
 
 ## Another startegy - groups based on personal characteristics 
 
@@ -986,14 +995,12 @@ set.seed(123)
 gower_dist <- daisy(sample_clust_pers[,-c(7,9)],
                     metric = "gower",
                     type = list(logratio = 3))
-# Check attributes to ensure the correct methods are being used
-# (I = interval, N = nominal)
 
 # summary(gower_dist)
 ```
 
 
-```{r}
+```{r echo=FALSE}
 # Calculate silhouette width for many k using PAM
 sil_width <- c(NA)
 for(i in 2:10){
@@ -1013,7 +1020,8 @@ lines(1:10, sil_width)
 
 ```
 
-```{r}
+```{r echo=FALSE}
+set.seed(123)
 pam_fit <- pam(gower_dist, diss = TRUE, k = 2)
 pam_results <- sample_clust_pers %>%
   dplyr::select(-ID) %>%
@@ -1068,6 +1076,7 @@ lines(1:30, sil_width)
 
 
 ```{r include=FALSE}
+set.seed(123)
 pam_fit <- pam(gower_dist, diss = TRUE, k = 18)
 pam_results <- sample_clust_coup %>%
   dplyr::select(-ID) %>%
