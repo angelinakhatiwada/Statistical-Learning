@@ -248,7 +248,7 @@ p6 <- ggplot(cleaned_data, aes(x=maritalStatus, fill=Y)) +
   geom_bar(stat="count")+
   theme(axis.text.x = element_text(angle = 15, hjust = 1))
 
-grid.arrange(p1, p2, p3, p4, p5, p6, ncol=2)
+grid.arrange(p1, p2, p3, p5, p6, ncol=2)
 
 ```
 
@@ -966,7 +966,7 @@ clusplot(sample_clust, groups, color=TRUE, shade=TRUE,
 
 Rand Index looks at similarity between any two clustering methods. 
 The Rand Index gives a value between 0 and 1,where 1 means the two clustering outcomes match identically
-```{r echo=FALSE}
+```{r include=FALSE}
 
 library(fossil)
 # Rand Index between k-medoids and agglomerative clustering.
@@ -979,7 +979,7 @@ rand.index(pam_fit$clustering, as.integer(sample_clust$Y))
 rand.index(groups, as.integer(sample_clust$Y))
 ```
 
-## Another startegy - groups based on personal characteristics 
+## Another strategy - groups based on personal characteristics 
 
 **Dataset Information**
 ```{r echo=FALSE}
