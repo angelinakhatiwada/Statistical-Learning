@@ -50,3 +50,8 @@ skimr, readr, plyr, dplyr, purrr, VIM, ggplot2, plotly, caret, grid, gridExtra, 
 
 #### Python Libraries used
 tensorflow, keras, scikit-learn, numpy, pandas, matplotlib
+
+
+*To display html reports in a browser, please use the following links:*
+ - *https://rawcdn.githack.com/rijinbaby/Statistical-Learning/main/Group_16_ANN_final.html*
+ - *https://rawcdn.githack.com/rijinbaby/Statistical-Learning/main/Group_16_Supervised_Unsupervised_final.html*
