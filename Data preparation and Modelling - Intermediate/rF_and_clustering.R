@@ -14,12 +14,15 @@
   cleaned_data_raw_columns$expiration_weightage <- as.numeric(as.character(cleaned_data_raw_columns$expiration_weightage))
 }
 
+str(cleaned_data_raw_columns)
 # random forest -----------------------------------------------------------
 
 {
   dataset_rf <- cleaned_data_raw_columns
   dataset_rf$direction_opp <- NULL
   dataset_rf$time <- NULL
+  
+  set.seed(123)
   
   # subseting dataset
   split_train_test  <- createDataPartition(dataset_rf$Y, p = .67,
@@ -32,7 +35,7 @@
 {
   # rF on complete dataset
   full_rF <- randomForest(Y~.,data=train)
-  full_rF
+  full_rF #TRAIN ERROR?
   
   plot(full_rF) # color for classes and black for OBB
   # plot(full_rF$err.rate)

@@ -71,7 +71,8 @@ There are NULL values and columns with unique values that should be removed.
 
 ```{r}
 coupon_data  <- read.csv("https://raw.githubusercontent.com/rijinbaby/Statistical-Learning/main/cleaned_data_raw_columns.csv")
-coupon_data$Y <- as.character(coupon_data$Y)
+coupon_data$Y <- as.factor(coupon_data$Y)
+
 
 ```
 

@@ -557,7 +557,7 @@ lambda <- 10^seq(-3, 3, length = 100)
 ```
 
 
-```{r}
+```{r include=FALSE}
 # Build the model
 set.seed(123)
 elastic <- train(
@@ -915,12 +915,19 @@ groups <- cutree(aggl.clust.w, k=2) # cut tree into 5 clusters
 clusplot(sample_clust, groups, color=TRUE, shade=TRUE,
          labels=2, lines=0, main= 'Driving scenario clusters')
 ```
+
+```{r}
+groups
+
+```
+
+
+
+
+
 Questions:
 1) How to compare the result with the true labels - Rand index
-2) Is the silhouette metrics optimal for evaluation?
-3) Should we do a PCA - 18% otf variance explained is very small, more dimensions 
 4) explain variabilty of Y within the groups
-5) select the number of k in hierarchical clustering to min the dist within the cluster
 
 ## Clustering evaluation - Rand index 
 
@@ -967,7 +974,7 @@ pam_results <- sample_clust_pers %>%
   mutate(cluster = pam_fit$clustering) %>%
   group_by(cluster) %>%
   do(the_summary = summary(.))
-#pam_results$the_summary 
+pam_results$the_summary 
 tsne_obj <- Rtsne(gower_dist, is_distance = TRUE)
 tsne_data <- tsne_obj$Y %>%
   data.frame() %>%
@@ -1057,6 +1064,12 @@ ggplot(aes(x = X, y = Y), data = tsne_data) +
 # newdata_pca$sdev
 # View(newdata_pca$rotation)
 ```
+
+
+Comments:
+1. Further research to improve the model: GAM - may be non-linear in some parameters
+2. PCA
+
 
 
 ```{r}
