@@ -1,0 +1,1153 @@
+---
+title: "Statistical Learning - Group 16 - Final Presentation"
+author: "Angelina Khatiwada & Rijin Baby"
+date: "18/06/2021"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Data Set: [in-vehicle coupon recommendation](https://archive.ics.uci.edu/ml/datasets/in-vehicle+coupon+recommendation)
+
+This data was collected via a survey on Amazon Mechanical Turk. The survey describes different driving scenarios including the destination, current time, weather, passenger, etc., and then ask the person whether he will accept the coupon if he is the driver.
+
+- Multivariate dataset
+- Number of Instances: 12684
+- Number of Attributes: 23
+
+### Key Attribute Information:
+
+- __destination: Home, No Urgent Place, Work__ 
+- passanger: Alone Friend(s), Kid(s), Partner 
+- __coupon: Bar, Carry out & Take away, Coffee House, Restaurant(<20), Restaurant(20-50)__ 
+- expiration: 1d, 2h (the coupon expires in 1 day or in 2 hours)
+- Bar: never, less1, 1~3, gt8, nan4~8 (feature meaning: how many times do you go to a bar every month?)
+- __CoffeeHouse: never, less1, 4~8, 1~3, gt8, nan (feature meaning: how many times do you go to a coffeehouse every month?)__
+- CarryAway:n4~8, 1~3, gt8, less1, never (feature meaning: how many times do you get take-away food every month?)
+- RestaurantLessThan20: 4~8, 1~3, less1, gt8, never (feature meaning: how many times do you go to a restaurant with an average expense per person of less than $20 every month?)
+- toCoupon_GEQ15min:0,1 (feature meaning: driving distance to the restaurant/bar for using the coupon is greater than 15 minutes)
+- direction_same:0, 1 (feature meaning: whether the restaurant/bar is in the same direction as your current destination)
+- __Y:1, 0 (whether the coupon is accepted)__
+
+```{r library, message=FALSE, warning=FALSE, include=FALSE}
+    #Install packages
+  # if(!require("pacman")) install.packages("pacman")
+  # pacman::p_load(skim,readr, dplyr, purrr, VIM, ggplot2, plotly,caret,fastDummies,randomForest
+  #                ,ClusterR,glmnet,leaps,gbm,Rtsne,dendextend,fossil)
+    library(skimr)
+    library(readr)
+    library(plyr)
+    library(dplyr)
+    library(purrr)
+    library(VIM)
+    library(ggplot2)
+    library(plotly)
+    library(caret)
+    library(grid)
+    library(gridExtra)
+    library("epitools")
+    library(pROC)
+    library(MASS)
+    library(class)
+    library(gmodels)
+    library(randomForest)
+    library(car)
+    library(ClusterR)
+    library(cluster)
+    library(gbm)
+    library(Rtsne)
+    library(glmnet)
+    library("reshape2")
+    library("dendextend")
+    library(fossil)
+
+```
+
+## Data Preparation
+
+```{r read data, message=FALSE, warning=FALSE, include=FALSE}
+  in_vehicle_coupon_recommendation <- read_csv("https://raw.githubusercontent.com/rijinbaby/Statistical-Learning/main/in-vehicle-coupon-recommendation.csv")
+  coupon_data <- in_vehicle_coupon_recommendation
+  coupon_data <- as.data.frame(coupon_data)
+  
+  # library(purrr)
+  # # View(coupon_data %>% map(table))
+  # coupon_data %>% map(table)
+```
+
+**1) Load Libraries & Read Dataset**\
+**2) Missing & unique value check**
+```{r echo=FALSE}
+  namedCounts <- sapply(coupon_data, function(x) round((sum(is.na(x))/length(x))*100,2))
+  namedCounts <- namedCounts[namedCounts>0]
+  cat("Columns with missing value\n")
+  print(paste0(names(namedCounts)," :",unname(namedCounts),"%"))
+
+  coupon_data$car <- NULL # no data at all - 4 other with <2% missing
+  
+  cat("Column with unique value\n")
+  which(apply(coupon_data, 2, function(x) length(unique(x)))==1)
+  coupon_data$toCoupon_GEQ5min <- NULL # removing column with single value
+```
+
+```{r include=FALSE}
+# coupon_accepted <- as.factor(coupon_data$Y)
+# 
+# #age
+# t1 <- ggplot(coupon_data, aes(x=age, fill=coupon_accepted)) +
+#     geom_bar(stat="count")
+# 
+# #income 
+# t2 <- ggplot(coupon_data, aes(x=income, fill=coupon_accepted)) +
+#   geom_bar(stat="count")
+# 
+# #expiration
+# t3 <- ggplot(coupon_data, aes(x=expiration, fill=coupon_accepted)) +
+#   geom_bar(stat="count")
+# 
+# grid.arrange(t1, t2, t3, ncol=1)
+
+```
+
+**3) Creating New Variables** 
+- occupation class
+- Expiration weightage (numeric, scaled)
+```{r message=FALSE, warning=FALSE, include=FALSE}
+
+  coupon_data[] <- lapply(coupon_data, as.character)
+  #coupon_data$Y <- as.numeric(coupon_data$Y)
+  coupon_data$Y <- as.factor(coupon_data$Y)
+  
+  # age column - Creating a new column to give numerical weightage
+  #table(coupon_data$age)
+  #coupon_data$age_weightage <- NA
+  #coupon_data$age_weightage[which(coupon_data$age=="below21")] <- 1
+  #coupon_data$age_weightage[which(coupon_data$age=="21")] <- 2
+  #coupon_data$age_weightage[which(coupon_data$age=="26")] <- 3
+  #coupon_data$age_weightage[which(coupon_data$age=="31")] <- 4
+  #coupon_data$age_weightage[which(coupon_data$age=="36")] <- 5
+  #coupon_data$age_weightage[which(coupon_data$age=="41")] <- 6
+  #coupon_data$age_weightage[which(coupon_data$age=="46")] <- 7
+  #coupon_data$age_weightage[which(coupon_data$age=="50plus")] <- 8
+  #table(coupon_data$age_weightage)
+  
+  # temp & weather
+  # View(table(coupon_data$weather,coupon_data$temperature))
+  
+  # Income - Creating a new column to give numerical weightage
+  #table(coupon_data$income)
+  #coupon_data$income_weightage <- NA
+  #coupon_data$income_weightage[which(coupon_data$income=="Less than $12500")] <- 1
+  #coupon_data$income_weightage[which(coupon_data$income=="$12500 - $24999")] <- 2
+  #coupon_data$income_weightage[which(coupon_data$income=="$25000 - $37499")] <- 3
+  #coupon_data$income_weightage[which(coupon_data$income=="$37500 - $49999")] <- 4
+  #coupon_data$income_weightage[which(coupon_data$income=="$50000 - $62499")] <- 5
+  #coupon_data$income_weightage[which(coupon_data$income=="$62500 - $74999")] <- 6
+  #coupon_data$income_weightage[which(coupon_data$income=="$75000 - $87499")] <- 7
+  #coupon_data$income_weightage[which(coupon_data$income=="$87500 - $99999")] <- 8
+  #coupon_data$income_weightage[which(coupon_data$income=="$100000 or More")] <- 9
+  #table(coupon_data$income_weightage)
+  
+  # Occupation - Creating a new column to re-classify reference - https://en.wikipedia.org/wiki/International_Standard_Classification_of_Occupations
+  (table(coupon_data$occupation))
+  coupon_data$occupation_class <- NA
+  coupon_data$occupation_class[which(coupon_data$occupation %in% 
+                                       c("Architecture & Engineering","Arts Design Entertainment Sports & Media"
+                                         ,"Business & Financial","Computer & Mathematical","Education&Training&Library"
+                                         ,"Healthcare Practitioners & Technical","Legal","Management"))] <- "Professionals"
+  coupon_data$occupation_class[which(coupon_data$occupation %in% 
+                                       c("Building & Grounds Cleaning & Maintenance","Food Preparation & Serving Related"
+                                         ,"Installation Maintenance & Repair","Transportation & Material Moving"))]  <- "Craft and related trades workers"
+  coupon_data$occupation_class[which(coupon_data$occupation %in% 
+                                       c("Community & Social Services","Construction & Extraction","Healthcare Support"
+                                         ,"Life Physical Social Science"))] <- "Technicians & prof"
+  coupon_data$occupation_class[which(coupon_data$occupation %in% 
+                                       c("Personal Care & Service","Protective Service","Sales & Related"))] <- "Service and sales"
+  coupon_data$occupation_class[which(coupon_data$occupation %in% 
+                                       c("Farming Fishing & Forestry","Office & Administrative Support"
+                                         ,"Production Occupations"))] <- "Others"  #own classification
+  coupon_data$occupation_class[which(coupon_data$occupation=="Retired")] <- 'Retired' 
+  coupon_data$occupation_class[which(coupon_data$occupation=="Student")] <- "Student"
+  coupon_data$occupation_class[which(coupon_data$occupation=="Unemployed")] <- "Unemployed"
+  
+  occup_class <- coupon_data %>%
+  group_by(occupation_class) %>%
+  mutate("Actual_occupation" = occupation)
+  occup_class <- unique(occup_class[,c('occupation_class','Actual_occupation')])
+  occup_class <- occup_class[order(occup_class$occupation_class),]
+ 
+                                       
+  # TIME VARIABLE
+  table(coupon_data$expiration)
+  coupon_data$expiration_weightage <- NA
+  coupon_data$expiration_weightage[which(coupon_data$expiration=="2h")] <- 2
+  coupon_data$expiration_weightage[which(coupon_data$expiration=="1d")] <- 24
+  coupon_data$expiration_weightage <- scale(as.numeric(coupon_data$expiration_weightage), center = FALSE)
+  
+  # passenger
+  coupon_data$passanger[which(coupon_data$passanger=="Friend(s)")] <- "Friends"
+  coupon_data$passanger[which(coupon_data$passanger=="Kid(s)")] <- "Kids"
+  
+  # education
+  coupon_data$education[which(coupon_data$education=="Graduate degree (Masters or Doctorate)")] <- "Graduate degree"
+  # print(table(coupon_data$occupation_class))
+```
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+knitr::kable(occup_class, format = "html")
+```
+\
+\
+**4) Missing imputation knn approach**
+```{r}
+  library(VIM)
+  cleaned_data <- kNN(
+                coupon_data, 
+                variable = c("Bar","CoffeeHouse","CarryAway","RestaurantLessThan20","Restaurant20To50")
+                , k = 5)
+  cleaned_data <- cleaned_data[,1:ncol(coupon_data)]
+  # coupon_data_final %>% map(table)
+  # colMeans(is.na(cleaned_data))*100
+```
+```{r include=FALSE}
+
+```
+
+## Plotting data columns
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+library(gridExtra)
+
+
+#Destination
+p1 <- ggplot(cleaned_data, aes(x=destination, fill=Y)) +
+    geom_bar(stat="count")
+g1 <- ggplot(cleaned_data, aes(x=destination, fill=Y)) +
+    geom_bar(position="fill")
+
+#passanger 
+p2 <- ggplot(cleaned_data, aes(x=passanger, fill=Y)) +
+  geom_bar(stat="count")
+g2 <- ggplot(cleaned_data, aes(x=passanger, fill=Y)) +
+  geom_bar(position="fill")
+
+#weather
+p3 <- ggplot(cleaned_data, aes(x=weather, fill=Y)) +
+  geom_bar(stat="count")
+g3 <- ggplot(cleaned_data, aes(x=weather, fill=Y)) +
+  geom_bar(position="fill")
+
+#time
+#p4 <- ggplot(cleaned_data, aes(x=time, fill=Y)) +
+  #geom_bar(stat="count")
+
+#gender
+# p5 <- ggplot(cleaned_data, aes(x=gender, fill=Y)) +
+#   geom_bar(stat="count")
+
+#maritalStatus   
+p6 <- ggplot(cleaned_data, aes(x=maritalStatus, fill=Y)) +
+  geom_bar(stat="count")+
+  theme(axis.text.x = element_text(angle = 15, hjust = 1))
+g6 <- ggplot(cleaned_data, aes(x=maritalStatus, fill=Y)) +
+  geom_bar(position="fill")+
+  theme(axis.text.x = element_text(angle = 15, hjust = 1))
+
+grid.arrange(p1,g1, p2,g2, p3,g3, p6,g6, ncol=2)
+
+```
+
+```{r echo=FALSE}
+#education                       
+p7 <- ggplot(cleaned_data, aes(x=education, fill=Y)) +
+  geom_bar(stat="count")+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+g7 <- ggplot(cleaned_data, aes(x=education, fill=Y)) +
+  geom_bar(position="fill")+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+grid.arrange(p7,g7,ncol=2)
+```
+
+
+```{r echo=FALSE}
+
+#occupation                                          
+p8 <- ggplot(cleaned_data, aes(x=occupation_class, fill=Y)) +
+  geom_bar(stat="count")+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+g8 <- ggplot(cleaned_data, aes(x=occupation_class, fill=Y)) +
+  geom_bar(position="fill")+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+grid.arrange(p8,g8,ncol=2)
+
+```
+
+```{r echo=FALSE}
+#Bar                                                 
+p9 <- ggplot(cleaned_data, aes(x=Bar, fill=Y)) +
+  geom_bar(stat="count")
+g9 <- ggplot(cleaned_data, aes(x=Bar, fill=Y)) +
+  geom_bar(position="fill")
+
+#CoffeeHouse                                       
+p10 <- ggplot(cleaned_data, aes(x=CoffeeHouse, fill=Y)) +
+  geom_bar(stat="count")
+g10 <- ggplot(cleaned_data, aes(x=CoffeeHouse, fill=Y)) +
+  geom_bar(position="fill")
+
+#CarryAway                       
+# p11 <- ggplot(cleaned_data, aes(x=CarryAway, fill=Y)) +
+#   geom_bar(stat="count")
+
+#RestaurantLessThan20                                
+# p12 <- ggplot(cleaned_data, aes(x=RestaurantLessThan20, fill=Y)) +
+#   geom_bar(stat="count")
+
+#direction_same                                               
+p13 <- ggplot(cleaned_data, aes(x=direction_same, fill=Y)) +
+  geom_bar(stat="count")
+g13 <- ggplot(cleaned_data, aes(x=direction_same, fill=Y)) +
+  geom_bar(position="fill")
+
+#has_children                                                
+# p14 <- ggplot(cleaned_data, aes(x=has_children, fill=Y)) +
+#   geom_bar(stat="count")
+
+#direction_opp                                              
+p15 <- ggplot(cleaned_data, aes(x=direction_opp, fill=Y)) +
+  geom_bar(stat="count")
+g15 <- ggplot(cleaned_data, aes(x=direction_opp, fill=Y)) +
+  geom_bar(position="fill")
+
+grid.arrange(p9,g9, p10,g10, p13,g13, p15,g15, ncol=2) #, p11, p12,
+
+```
+
+
+<!-- **For numeric variables** -->
+```{r eval=FALSE, include=FALSE}
+#Age histogram
+#p15 <- ggplot(data = cleaned_data, aes(age_weightage, color = Y))+
+  #geom_freqpoly(binwidth = 5, size = 1)
+
+#Income histogram
+#p16 <- ggplot(data = cleaned_data, aes(income_weightage, color = Y))+
+  #geom_freqpoly(binwidth = 5, size = 1)
+
+#Expiration histogram
+# p17 <- ggplot(data = cleaned_data, aes(expiration_weightage, color = Y))+
+#   geom_freqpoly(binwidth = 5, size = 1)
+# 
+# p17
+```
+\
+\
+\
+
+# Modeling
+
+- Droped the variable 'direction_opp' that is perfectly correlated with the varible 'direction_same'. 
+- 'occupation' will be replaced by 'occupation_class' in the model.  
+- 'expiration' replaced by numeric variable.
+
+### Dataset Summary
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+# cleaned_data$Y <- as.factor(cleaned_data$Y)
+cleaned_data$has_children <- as.factor(cleaned_data$has_children)
+cleaned_data$toCoupon_GEQ15min <- as.factor(cleaned_data$toCoupon_GEQ15min)
+cleaned_data$toCoupon_GEQ25min <- as.factor(cleaned_data$toCoupon_GEQ25min)
+cleaned_data$direction_same <- as.factor(cleaned_data$direction_same)
+
+drops= c("direction_opp", 'expiration', 'occupation', 'time') #drop additional correlated variables
+cleaned_data <- cleaned_data[ , !(colnames(cleaned_data) %in% drops)]
+
+#cleaned_data <- fastDummies::dummy_cols(cleaned_data, remove_first_dummy = TRUE, select_columns ='time')
+
+str(cleaned_data)
+
+```
+\
+\
+
+## Logistic Regression
+
+The multiple logistic regression is used to predict the probability of class membership based on multiple predictor variables.
+
+### Run model with all parameters on dataset without splitting
+
+- **The most significant variables** (highest z-score and lowest p-value): destination, weather, coupon, CoffeHouse, direction, expiration_weightage
+- Insignificant variables (p-value > 0.05): has_children
+
+The coefficient estimate of the variable destinationNo Urgent Place is b = 0.72: means that an No UrgentPlace is associated with increase in the probability of accepting coupon more than baseline dummy destinationWork. 
+
+Being Male, for example, increases the probability of accepting coupon more than being Female. Being age50plus decreases the probability of accepting coupon more than being 21-26.
+
+If we have at least one significant dummy, we can not exclude the variable.
+
+```{r}
+set.seed(123)
+full_log_model <- glm(Y ~., data = cleaned_data, family=binomial(link='logit'))
+summary(full_log_model)
+```
+An **odds ratio** measures the association between a x and y. It represents the ratio of the odds that an event will occur given the presence of the predictor x, compared to the odds of the event occurring in the absence of that predictor. The associated beta coefficient (b) in the logistic regression function corresponds to the log of the odds ratio for that predictor. If the odds ratio is 0.5, then the odds that the event = 1 are 0.5 higher when the predictor x is present (x = 1) versus x is absent (x = 0).
+
+**Chi-square test** to check the overall effect of variables on the dependent variable
+```{r echo=FALSE}
+anova(full_log_model, test = 'Chisq')
+```
+Insignificant coefficients (with p-value > 0.05) according to chi2 check are:
+
+- has_children
+- CarryAway  
+- toCoupon_GEQ25min
+
+**Multicollinearity check**
+```{r}
+car::vif(full_log_model)
+```
+There is no problem of mulricollinearity.
+
+Keeping **insignificant variables** in the model may contribute to overfitting. 
+Eliminated **manually, using stepwise regression and penalized regression methods**.
+
+### Stepwise Selection
+
+**Both directions**
+```{r echo=FALSE}
+library(caret)
+library(leaps)
+library(MASS)
+library(caret)
+
+# Fit the both direction model 
+step_model <- stepAIC(full_log_model, trace = FALSE)
+#summary(step_model)
+step_model$anova
+```
+
+**Forward direction**
+```{r echo=FALSE}
+# Fit the forward model
+forward <- stepAIC(full_log_model, direction = 'forward', trace = FALSE)
+#summary(step_model)
+forward$anova
+```
+With forward direction we get the same result as we had with a complete model, forward begins with a Null model (intercept only model)
+\
+
+**Backward direction**
+```{r echo=FALSE}
+# Fit the backward model
+backward <- stepAIC(full_log_model, direction = 'backward', trace = FALSE)
+#summary(step_model)
+backward$anova
+```
+The backward procedure eliminated exactly the same variables as the “both” procedure.
+
+- Different criteria can be assigned to the stepAIC() function for stepwise selection. The default is AIC, which is performed by assigning the argument k to 2.
+
+- We also tried running bestglm, but there is a hard-coded constraint in bestglm (15 predictors means there are 2^15 = 32768 candidate models). In our case we have around 70 variables counting dummies.
+
+```{r eval=FALSE, include=FALSE}
+# library(leaps)
+# library(bestglm)
+# args(bestglm)
+```
+
+
+```{r eval=FALSE, include=FALSE}
+# coupon_data_encoded = cleaned_data
+# 
+# coupon_data_encoded$Y <- as.numeric(cleaned_data$Y)
+# coupon_data_encoded$has_children <- as.numeric(coupon_data_encoded$has_children)
+# coupon_data_encoded$toCoupon_GEQ15min <- as.numeric(coupon_data_encoded$toCoupon_GEQ15min)
+# coupon_data_encoded$toCoupon_GEQ25min <- as.numeric(coupon_data_encoded$toCoupon_GEQ25min)
+# coupon_data_encoded$direction_same <- as.numeric(coupon_data_encoded$direction_same)
+# 
+# encoded <- fastDummies::dummy_cols(coupon_data_encoded, remove_first_dummy = TRUE)
+#   
+# coupon_data_encoded <- encoded[ , ((!(colnames(encoded) %in% colnames(coupon_data_encoded))) 
+#                                      | (colnames(encoded) %in% c("Y" ,"expiration_weightage", 'has_children', 'toCoupon_GEQ15min', 'toCoupon_GEQ25min', 'direction_same' )))]
+  
+```
+
+```{r eval=FALSE, include=FALSE}
+# bestglm(coupon_data_encoded, IC ='BIC', family = binomial)
+```
+
+### Running 10 fold Cross-Validation on Complete and Stepwise model using training data
+
+**Initially splitting data into train (0.67) and test sets to avoid overfitting**\
+
+**1) Model on training set with all variables**
+```{r echo=FALSE}
+set.seed(123)
+split_train_test  <- createDataPartition(cleaned_data$Y, p = .67,list = FALSE, times = 1)
+train <- cleaned_data[ split_train_test,]
+test  <- cleaned_data[-split_train_test,]
+
+
+#CV  with 10 folds on full dataset
+train_control <- trainControl(method = "cv", number = 10)
+# train the model on training set
+log_reg_full <- train(Y ~.,
+               data = train,
+               trControl = train_control,
+               method = "glm",
+               family=binomial(link='logit')) 
+
+log_reg_full
+#summary(log_reg_full)
+```
+
+**2) Model on training set by dropping columns suggested by stepwise model (CarryAway, RestaurantLessThan20) **
+```{r echo=FALSE}
+#CV  with 10 folds on step model
+train_control <- trainControl(method = "cv", number = 10)
+# train the model on training set
+log_reg_step <- train(Y ~.,
+               data=subset(train, select=c( -CarryAway, -RestaurantLessThan20)),
+               trControl = train_control,
+               method = "glm",
+               family=binomial(link='logit'))
+
+log_reg_step
+#summary(log_reg_step)
+```
+**Full model AIC: 10139** \
+**Stepwise model AIC: 10134 **
+
+According to the bias-variance trade-off, all things equal, simpler model should be always preferred because it is less likely to overfit the training data (less variance).
+
+## Logistic model Predictions on Test set
+
+<!-- **Model accuracy and Confusion matrix** -->
+
+**Logistic Complete Model Accuracy**
+```{r echo=TRUE}
+log_reg_prob1 <- predict(log_reg_full, test, type = 'prob')
+log_reg_pred1 <- ifelse(log_reg_prob1[2] > 0.5, 1, 0)
+mean(log_reg_pred1 == test$Y)
+```
+
+**Stepwise Model Accuracy**
+```{r echo=FALSE}
+log_reg_prob1 <- predict(log_reg_step, test, type = 'prob')
+log_reg_pred1 <- ifelse(log_reg_prob1[2] > 0.5, 1, 0)
+mean(log_reg_pred1 == test$Y)
+```
+**Stepwise model Confusion matrix**
+```{r echo=FALSE}
+confusionMatrix(
+  as.factor(log_reg_pred1),
+  as.factor(test$Y),
+  positive = "1" 
+)
+```
+**High sensitivity**: fewer False Negative errors, which are severe types of error for us.\
+Low specificity: Many False Positive.
+
+Sensitivity = TP/TP+FN\
+The ability of a test to correctly identify people with a coupon\
+Speficity = TN/TP+FN\
+
+We can change the threshold from 0.5 to 0.45 in order to decrease FN. Focus on sensitivity which is more important for business opportunities.
+
+```{r echo=FALSE}
+log_reg_pred1 <- ifelse(log_reg_prob1[2] > 0.45, 1, 0)
+
+confusionMatrix(
+  as.factor(log_reg_pred1),
+  as.factor(test$Y),
+  positive = "1" 
+)
+```
+
+**ROC curve**
+```{r message=FALSE, warning=FALSE}
+test_roc = roc(test$Y ~ log_reg_prob1$"1", plot = TRUE, print.auc = TRUE)
+```
+
+## Penalised models: Lasso and Elastic Net
+
+With dummy variables we have 70 variables, some of the coefficients are already shrinked.
+We tried to apply Lasso and Elastic Net to find a reduced set of variables resulting to an optimal performing mode (penalty for having too many variables - regularization).
+
+Lasso regression: the coefficients of some less contributive variables are zero. Only the most significant variables are kept in the final model.
+
+Elastic net regression: the combination of ridge and lasso regression. It shrinks some coefficients toward zero  and set some coefficients to exactly zero.
+
+```{r}
+set.seed(123)
+
+x=model.matrix(Y~., data=train)[,-20]
+y=as.numeric(train$Y)
+
+x.test <- model.matrix(Y ~., test)[,-20]
+
+fit.lasso= glmnet(x, y, family = "binomial", alpha = 1) #lambda = NULL
+plot(fit.lasso,xvar="lambda",label=TRUE)
+```
+
+```{r echo=FALSE}
+cv.lasso=cv.glmnet(x, y, family = "binomial", alpha = 1)
+plot(cv.lasso)
+```
+
+The log of the optimal value of lambda is around -6, which is the one that minimizes the prediction error. **The purpose of regularization is to balance accuracy and simplicity**. 
+
+```{r}
+lasso_model <- glmnet(x, y, family = "binomial", alpha = 1, lambda = cv.lasso$lambda.min) 
+# Display regression coefficients
+print('The value of the optimal lambda:')
+cv.lasso$lambda.min
+coef(lasso_model)
+```
+
+```{r}
+#Make predictions on the test data
+probabilities <- lasso_model %>% predict(x.test)
+predicted.classes <- ifelse(probabilities > 0.5, "1", "0")
+#Model accuracy
+observed.classes <- test$Y
+mean(predicted.classes == observed.classes)
+```
+
+Results do not show any improvement in the the model performance on the test data.
+
+**ELASTIC NET**
+
+For elastic net regression, alpha is between 0 and 1. 
+
+We automatically select the best tuning parameters alpha and lambda 
+
+```{r echo=FALSE}
+lambda <- 10^seq(-3, 3, length = 100)
+```
+
+
+```{r}
+# Build the model
+set.seed(123)
+elastic <- train(
+  Y ~., data = train, method = "glmnet",
+  family = "binomial",
+  trControl = trainControl("cv", number = 10),
+  tuneLength = 5
+  )
+# Best tuning parameter
+elastic$bestTune
+```
+
+**Training model with the best parameters and predicting on the test set**
+```{r}
+elastic_model <- glmnet(x, y, family = "binomial", alpha = elastic$bestTune$alpha, lambda = elastic$bestTune$lambda) #lambda = NULL
+# Display regression coefficients
+#coef(lasso_model)
+
+#Make predictions on the test data
+
+probabilities <- elastic_model %>% predict(x.test)
+predicted.classes <- ifelse(probabilities > 0.5, "1", "0")
+#Model accuracy
+observed.classes <- test$Y
+mean(predicted.classes == observed.classes)
+```
+
+Elastic Net performs a bit better than Lasso.
+
+## Linear Discriminant Analysis
+
+```{r}
+lda.fit=lda(Y~.,data = train)
+lda.fit
+
+plot(lda.fit)
+```
+
+```{r}
+lda.pred=predict(lda.fit,test)$class
+table(lda.pred,test$Y)
+mean(lda.pred==test$Y)
+```
+
+LDA predicts more False Positives as well, accuracy is similar to Logistic Regression (Robust result).
+
+**Improving the accuracy**:
+- Remove potential outliers (Robust Logistic Regression, remove outliers within categorical variables and combinations of categorical variables)
+- Random forest and boosting models to capture non-linearities and interactions between the variables
+- Another option to apply Generalised Additive Models.
+
+
+# RANDOM FOREST
+
+- Non-linear classifier, made up of an ensemble of decision trees that are independent of each other and each will predict the outcome variable using their own set of rules
+- Random Forest Classifier is more of Accuracy focused algorithm and is best till it’s used with proper fit, else it gets overfit quickly
+- Random Forest Classifier performs better with more categorical data than numeric and logistic regression is a little confusing when comes to categorical data
+- RFC can also tell us how much each feature contributes to class prediction using Feature Importance and tree graphs for better interpretation.
+
+### Dataset Summary
+```{r include=FALSE}
+cleaned_data_raw_columns <- read.csv("https://raw.githubusercontent.com/rijinbaby/Statistical-Learning/main/cleaned_data_raw_columns.csv")
+  cleaned_data_raw_columns$age_weightage <- NULL; cleaned_data_raw_columns$income_weightage <- NULL
+  cleaned_data_raw_columns$occupation<- NULL; cleaned_data_raw_columns$expiration <- NULL
+  cleaned_data_raw_columns[] <- lapply(cleaned_data_raw_columns, as.factor)
+  cleaned_data_raw_columns$expiration_weightage <- as.numeric(as.character(cleaned_data_raw_columns$expiration_weightage))
+  
+  dataset_rf <- cleaned_data_raw_columns
+  dataset_rf$direction_opp <- NULL
+  dataset_rf$time <- NULL
+  dataset_rf$expiration_weightage <- scale(as.numeric(dataset_rf$expiration_weightage), center = FALSE)
+  
+```
+
+```{r echo=FALSE}
+  # subseting dataset
+  split_train_test  <- createDataPartition(dataset_rf$Y, p = .67,
+                                           list = FALSE,
+                                           times = 1)
+  train <- dataset_rf[ split_train_test,]
+  test  <- dataset_rf[-split_train_test,]
+  y_col <- which(colnames(test)=="Y")
+  str(dataset_rf)
+```
+### Run model on complete dataset
+```{r echo=FALSE}
+# rF on complete dataset
+  full_rF <- randomForest(Y~.,data=train)
+  full_rF
+  
+  # plot(full_rF$err.rate)
+  plot(full_rF) # color for classes and black for OBB
+```
+```{r include=FALSE}
+
+```
+
+### Tune parameters
+```{r}
+  # Perform training with parameters
+  rf_classifier = randomForest(Y ~., data = train, ntree=200, mtry=5, importance=TRUE)
+  rf_classifier
+  # plot(rf_classifier)
+  varImpPlot(rf_classifier)
+```
+\
+**Most important variables: Coupon, coffee house, age, income, occupation, bar, restaurantlessthan20, expiration**
+
+  MeanDecreaseAccuracy: gives a rough estimate of the loss in prediction performance when that
+  particular variable is omitted from the training set. Caveat: if two variables are somewhat
+  redundant, then omitting one of them may not lead to massive gains in prediction performance,
+  but would make the second variable more important.
+  
+  MeanDecreaseGini: GINI is a measure of node impurity. Think of it like this, if you use this
+  feature to split the data, how pure will the nodes be? Highest purity means that each node
+  contains only elements of a single class. Assessing the decrease in GINI when that feature
+  is omitted leads to an understanding of how important that feature is to split the data correctly.
+
+### Model Evaluation
+```{r echo=FALSE}
+  # Validation set assessment #1: looking at confusion matrix
+  prediction_for_table <- predict(rf_classifier,test[,-y_col])
+  # table(actual=test[,y_col],predicted=prediction_for_table)
+  confusionMatrix(
+    as.factor(prediction_for_table),
+    as.factor(test$Y),
+    positive = "1" 
+  )
+```
+```{r message=FALSE, warning=FALSE}
+  # classification perfomance
+  # auc(test$Y,as.numeric(as.character(prediction_for_table)))
+  test_roc = roc(test$Y , as.numeric(as.character(prediction_for_table)), plot = TRUE, print.auc = TRUE)
+```
+
+
+```{r include=FALSE}
+train_boost <- train; train_boost$Y <- as.numeric(as.character(train_boost$Y))
+  test_boost <- test; test_boost$Y <- as.numeric(as.character(test_boost$Y))
+```
+# BOOSTING
+
+- An ensemble modeling technique which attempts to build a strong classifier from the number of weak classifiers. It is done building a model by using weak models in series. Firstly, a model is built from the training data. Then the second model is built which tries to correct the errors present in the first model. This procedure is continued and models are added until either the complete training data set is predicted correctly or the maximum number of models are added
+- Trees are grown sequentially & each tree uses information from previous tree
+
+### Train Model
+```{r}
+# gaussian - regression, bernoulli - classification
+  rf_boost <- gbm(Y~.,data=train_boost,distribution="bernoulli",n.trees=5000,shrinkage=0.01,interaction.depth=1, cv.folds=3) #, verbose=F
+  
+  best.iter = gbm.perf(rf_boost, method="cv") #Check the best iteration number
+  
+  # plot - Summary of the model results, with the importance plot of predictors
+  par(mar = c(5, 8, 1, 1))
+  summary(rf_boost, cBars = 10,las = 2)
+```
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+pred_boost = predict(rf_boost, test_boost[,-y_col], type = 'response')
+  pred_boost_nw <- ifelse(pred_boost > 0.50,1,0)
+  
+  confusionMatrix(
+    as.factor(pred_boost_nw),
+    as.factor(test_boost$Y),
+    positive = "1" 
+  )
+```
+### Tune model
+```{r}
+ # Using the caret package the get the model preformance in the best iteration
+  set.seed(123)
+  fitControl = trainControl(method="cv", number=3, returnResamp = "all")
+  
+  train_boost$Y <- as.factor(train_boost$Y)
+  test_boost$Y <- as.factor(test_boost$Y)
+  
+  model2 = train(Y~., data=train_boost, method="gbm",distribution="bernoulli", trControl=fitControl,
+                 verbose=F, tuneGrid=data.frame(.n.trees=best.iter, .shrinkage=0.01, .interaction.depth=1, .n.minobsinnode=1))  #
+  
+  # model2
+  # confusionMatrix(model2)
+  mPred = predict(model2, test_boost[,-y_col]) #, na.action = na.pass
+  # postResample(mPred, test_boost$Y)
+  # confusionMatrix(mPred, test_boost$Y)
+  
+  confusionMatrix(
+    as.factor(mPred),
+    as.factor(test_boost$Y),
+    positive = "1"
+  )
+```
+
+- Performance of boosting can be an effect of noise in the data
+- Larger noise leads to lack of bias
+- Boosting works on weak classifiers that have high bias and low variation works iteratively on weak learners, and more weightage is given to misclassified learners in next iteration
+
+\
+\
+
+# Unsupervised Learning
+
+
+# CLUSTERING
+
+- Clustering is used to find structure in unlabeled data
+- Interested to see if the drivers could be segmented easily based on the data present
+
+### Dataset summary
+```{r echo=FALSE}
+cleaned_data_clust <- cleaned_data
+cleaned_data_clust$ID <- seq.int(nrow(cleaned_data_clust))
+cleaned_data_clust<- cleaned_data_clust%>%mutate_if(is.character, as.factor)
+str(cleaned_data_clust)
+```
+
+#### Gower distance 
+
+**(for mixed type data - categorical and numerical)**
+
+**Cons**: Requires an NxN distance matrix to be calculated, which is computationally intensive. One possible solution for this is to **sample data**, cluster the smaller sample, then treat the clustered sample as training data for k Nearest Neighbors and "classify" the rest of the data.
+
+We create a sample of 1000 observations. 
+
+```{r echo=FALSE}
+set.seed(123) 
+sample_clust <- cleaned_data_clust[sample(nrow(cleaned_data_clust), 1000),]
+```
+
+```{r}
+library(cluster)
+library(Rtsne)
+gower_distance <- function(datafr) {
+  gower_dist <- daisy(datafr,
+                    metric = "gower",
+                    type = list(logratio = 3))
+  return(gower_dist)
+}
+```
+
+**Clustering for entire driving scenario (with all the variables)**
+Gower distance
+```{r echo=TRUE}
+set.seed(123) 
+#removing Y and ID
+gower_dist <- gower_distance(sample_clust[,-c(20,23)])
+summary(gower_dist)
+```
+
+Gower distance  = 0 minimum. 1 - maximum distance.\
+We have more dissimilar observaions in the dataset.
+
+
+```{r}
+# Output most similar pair
+gower_mat <- as.matrix(gower_dist)
+sample_clust[
+  which(gower_mat == min(gower_mat[gower_mat != min(gower_mat)]),
+        arr.ind = TRUE)[1, ], ]
+```
+
+```{r}
+# Output most dissimilar pair
+sample_clust[
+  which(gower_mat == max(gower_mat[gower_mat != max(gower_mat)]),
+        arr.ind = TRUE)[1, ], ]
+```
+\
+\
+**K-medoids Clustering**
+
+Partitioning around medoids with custom distance matrix
+
+The k-medoids problem is a clustering problem similar to k-means.In contrast to the k-means algorithm, k-medoids chooses **actual data points as centers (medoids or exemplars)**, and thereby allows for **greater interpretability of the cluster centers** than in k-means.
+
+k-medoids can be used with arbitrary dissimilarity measures, whereas k-means generally requires Euclidean distance for efficient solutions. Because **k-medoids minimizes a sum of pairwise dissimilarities** instead of a sum of squared Euclidean distances, it is **more robust to noise and outliers than k-means**.
+
+Selecting the number of clusters k using **silhouette width**, an internal validation metric which is an aggregated measure of how similar an observation is to its own cluster compared its closest neighboring cluster. The metric can range from -1 to 1, where higher values are better.
+
+```{r}
+library(Rtsne)
+# Calculate silhouette width for many k using PAM
+sil_width <- c(NA)
+for(i in 2:10){
+  pam_fit <- pam(gower_dist,
+                 diss = TRUE,
+                 k = i)
+  sil_width[i] <- pam_fit$silinfo$avg.width
+}
+
+# Plot sihouette width (higher is better)
+plot(1:10, sil_width,
+     xlab = "Number of clusters",
+     ylab = "Silhouette Width")
+lines(1:10, sil_width)
+```
+\
+**Interpret the clusters by running summary on each cluster:**
+
+In cluster 1 (430): higher frequency for Alone, Male, 21, Single, no_children, Some college - no degree/Bachelors degree, lower income, Student\     
+
+In cluster 2 (570): higher frequency for No Urgent Place, Friends/Alone, Female, 50plus, Married_Partner, has_children, Bachelors degree/Graduate, higher income,Restaurant20To50, toCoupon_GEQ15min, Professionals
+
+Other characteristics are overlapping for both the clusters, so we can explore if only the personal characteriscts and not the driving scenario lead to the cluster separation.
+
+Distribution of Y is the same in the clusters (58% accepted in the first group and 55% in the second).
+
+
+```{r}
+set.seed(123) 
+pam_fit <- pam(gower_dist, diss = TRUE, k = 2)
+pam_results <- sample_clust %>%
+  dplyr::select(-ID) %>%
+  mutate(cluster = pam_fit$clustering) %>%
+  group_by(cluster) %>%
+  do(the_summary = summary(.))
+#pam_results$the_summary 
+```
+
+
+```{r}
+sample_clust[pam_fit$medoids, ]
+```
+One way to visualize many variables in a lower dimensional space is with t-distributed stochastic neighborhood embedding, or t-SNE. A dimensionality reduction technique that tries to preserve local structure so as to make clusters visible in a 2D or 3D visualization.
+
+```{r}
+tsne_obj <- Rtsne(gower_dist, is_distance = TRUE)
+tsne_data <- tsne_obj$Y %>%
+  data.frame() %>%
+  setNames(c("X", "Y")) %>%
+  mutate(cluster = factor(pam_fit$clustering),
+         name = sample_clust$ID)
+ggplot(aes(x = X, y = Y), data = tsne_data) +
+  geom_point(aes(color = cluster))
+```
+
+**Clusters are overlapping**. Blue points are closer to blue cluster medoid for the metrics, however, it's impossible to show it in a 2D space due to the fact that only 18% of variance of the data explained after dim reduction.
+
+## Agglomerative clustering
+
+```{r}
+aggl.clust.c <- hclust(gower_dist, method = "complete")
+  plot(aggl.clust.c,
+      main = "Agglomerative, complete linkages")
+# 
+# aggl.clust.c <- hclust(gower_dist, method = "average")
+# plot(aggl.clust.c,
+#      main = "Agglomerative, average linkages")
+# 
+# aggl.clust.c <- hclust(gower_dist, method = "single")
+# plot(aggl.clust.c,
+#      main = "Agglomerative, single linkages")
+
+aggl.clust.w <- hclust(gower_dist, method = "ward.D2")
+plot(aggl.clust.w,
+     main = "Agglomerative, ward linkages")
+
+```
+
+```{r}
+# hierarchical clustering using Ward linkage
+
+dendro <- as.dendrogram(aggl.clust.w)
+dendro.col <- dendro %>%
+  set("branches_k_color", k = 2, value =   c( "gold3", "darkcyan")) %>%
+  set("branches_lwd", 0.6) %>%
+  set("labels_colors", 
+      value = c("darkslategray")) %>% 
+  set("labels_cex", 0.5)
+ggd1 <- as.ggdend(dendro.col)
+ggplot(ggd1, theme = theme_minimal()) +
+  labs(x = "Num. observations", y = "Height", title = "Dendrogram, k = 2")
+
+```
+
+```{r}
+groups <- cutree(aggl.clust.w, k=2) # cut tree into 5 clusters
+clusplot(sample_clust, groups, color=TRUE, shade=TRUE,
+         labels=2, lines=0, main= 'Driving scenario clusters')
+```
+\
+\
+
+## Clustering evaluation - Rand index 
+
+Rand Index looks at similarity between any two clustering methods. 
+The Rand Index gives a value between 0 and 1,where 1 means the two clustering outcomes match identically
+```{r include=FALSE}
+
+library(fossil)
+# Rand Index between k-medoids and agglomerative clustering.
+rand.index(pam_fit$clustering, groups) 
+
+# Rand Index between k-medoids and true labels
+rand.index(pam_fit$clustering, as.integer(sample_clust$Y))
+
+# Rand Index between agglomerative clustering and true labels
+rand.index(groups, as.integer(sample_clust$Y))
+```
+
+## Another strategy - groups based on personal characteristics 
+
+**Dataset Information**
+```{r echo=FALSE}
+sample_clust_pers <- sample_clust[,-c(1:5, 12:19, 22)]
+str(sample_clust_pers)
+
+set.seed(123) 
+```
+
+```{r include=FALSE}
+
+# Remove Y and ID before clustering
+gower_dist <- daisy(sample_clust_pers[,-c(7,9)],
+                    metric = "gower",
+                    type = list(logratio = 3))
+
+# summary(gower_dist)
+```
+
+
+```{r echo=FALSE}
+# Calculate silhouette width for many k using PAM
+sil_width <- c(NA)
+for(i in 2:10){
+  
+  pam_fit <- pam(gower_dist,
+                 diss = TRUE,
+                 k = i)
+  
+  sil_width[i] <- pam_fit$silinfo$avg.width
+  
+}
+# Plot sihouette width (higher is better)
+plot(1:10, sil_width,
+     xlab = "Number of clusters",
+     ylab = "Silhouette Width")
+lines(1:10, sil_width)
+
+```
+
+```{r echo=FALSE}
+set.seed(123)
+pam_fit <- pam(gower_dist, diss = TRUE, k = 2)
+pam_results <- sample_clust_pers %>%
+  dplyr::select(-ID) %>%
+  mutate(cluster = pam_fit$clustering) %>%
+  group_by(cluster) %>%
+  do(the_summary = summary(.))
+#pam_results$the_summary 
+tsne_obj <- Rtsne(gower_dist, is_distance = TRUE)
+tsne_data <- tsne_obj$Y %>%
+  data.frame() %>%
+  setNames(c("X", "Y")) %>%
+  mutate(cluster = factor(pam_fit$clustering),
+         name = sample_clust_pers$ID)
+ggplot(aes(x = X, y = Y), data = tsne_data) +
+  geom_point(aes(color = cluster))
+```
+
+## Group by characteristics of coupon only
+
+```{r echo=FALSE}
+sample_clust_coup <- sample_clust[,-c(1:4, 6:16, 19, 21)]
+str(sample_clust_coup)
+```
+
+```{r echo=FALSE}
+set.seed(123) 
+
+# Remove Y and ID before clustering
+gower_dist <- daisy(sample_clust_coup[,-c(3,5)],
+                    metric = "gower",
+                    type = list(logratio = 3))
+# Check attributes to ensure the correct methods are being used
+# (I = interval, N = nominal)
+
+# summary(gower_dist)
+
+# Calculate silhouette width for many k using PAM
+sil_width <- c(NA)
+for(i in 2:30){
+  
+  pam_fit <- pam(gower_dist,
+                 diss = TRUE,
+                 k = i)
+  sil_width[i] <- pam_fit$silinfo$avg.width
+}
+# Plot sihouette width (higher is better)
+plot(1:30, sil_width,
+     xlab = "Number of clusters",
+     ylab = "Silhouette Width")
+lines(1:30, sil_width)
+```
+
+
+```{r include=FALSE}
+set.seed(123)
+pam_fit <- pam(gower_dist, diss = TRUE, k = 18)
+pam_results <- sample_clust_coup %>%
+  dplyr::select(-ID) %>%
+  mutate(cluster = pam_fit$clustering) %>%
+  group_by(cluster) %>%
+  do(the_summary = summary(.))
+```
+
+```{r echo=FALSE}
+tsne_obj <- Rtsne(gower_dist, is_distance = TRUE)
+tsne_data <- tsne_obj$Y %>%
+  data.frame() %>%
+  setNames(c("X", "Y")) %>%
+  mutate(cluster = factor(pam_fit$clustering),
+         name = sample_clust_coup$ID)
+ggplot(aes(x = X, y = Y), data = tsne_data) +
+  geom_point(aes(color = cluster))
+```
+
+```{r}
+pam_results$the_summary 
+```
+
